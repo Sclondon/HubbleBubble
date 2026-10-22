@@ -55,6 +55,14 @@ func _run() -> void:
 		cam.look_at(Hut.WINDOW_SPOT + Vector3(0, 0.3, 0))
 		await _shot("customer")
 		cam.transform = keep
+	if only == "react":
+		main.hut.react("fireball", Color("ffa22e"), 2.0)
+		await _frames(12)
+		await _shot("react")
+		main.hut.react("rainbow", Color("a8c8ff"), 2.0)
+		main.hut.react("bubbles", Color("5fd6c4"), 2.0)
+		await _frames(14)
+		await _shot("react2")
 	main.toggle_book()
 	await _frames(5)
 	await _shot("book")
@@ -67,7 +75,7 @@ func _run() -> void:
 
 
 func _shot(name: String) -> void:
-	if only != "" and only != name:
+	if only != "" and only != name and not (only == "react" and name.begins_with("react")):
 		return
 	await _frames(3)
 	var img := root.get_texture().get_image()
