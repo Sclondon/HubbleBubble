@@ -145,8 +145,8 @@ func zap() -> void:
 
 
 func poof() -> void:
-	_burst(smoke, Color("4a4038"))
-	_burst(wisps, Color("2a2420"), 20, 0.8)
+	_burst(smoke, Color("4a4038"), 8, 0.9)
+	_burst(wisps, Color("2a2420"), 8, 0.6)
 	ripple(Vector3.ZERO, 1.5)
 
 
@@ -444,8 +444,8 @@ func _cauldron() -> void:
 	smoke.gravity = Vector3(0, 0.5, 0)
 	smoke.lifetime = 1.6
 	smoke.color = Color("4a4038")
-	smoke.scale_amount_min = 1.0
-	smoke.scale_amount_max = 2.0
+	smoke.scale_amount_min = 0.6
+	smoke.scale_amount_max = 1.1
 	smoke.scale_amount_curve = _rise_and_pop()
 	smoke.emitting = false
 	_more_particles()

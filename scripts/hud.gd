@@ -368,6 +368,8 @@ func _button_pause(r: Rect2) -> void:
 
 
 func _draw_tickets() -> void:
+	if shop.mode == "free":
+		return
 	for i in _tickets.size():
 		var r := _tickets[i]
 		if i >= shop.orders.size():
@@ -519,6 +521,11 @@ func _draw_speech() -> void:
 		top_limit = size_now.y * 0.36
 	elif shop.state == "swamp":
 		box.position.y = 140.0
+		top_limit = 0.0
+		low_limit = size_now.y
+	elif sp.who == "witch" and not tall and shop.state == "play":
+		# Your own words, in the corner by the bellows, clear of the brew
+		box.position = Vector2(size_now.x - bw - 90, size_now.y - bh - 40)
 		top_limit = 0.0
 		low_limit = size_now.y
 	elif sp.who == "witch" and tall:

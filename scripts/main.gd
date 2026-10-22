@@ -183,8 +183,8 @@ func _frame() -> void:
 	else:
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.fov = 50.0
-		camera.position = Vector3(0, 3.7, 4.6)
-		camera.look_at(Vector3(0, 1.25, -1.2))
+		camera.position = Vector3(0, 3.6, 2.85)
+		camera.look_at(Vector3(0, 1.3, -1.4))
 	if hud != null:
 		hud.layout()
 
