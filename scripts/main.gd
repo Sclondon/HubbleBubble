@@ -10,6 +10,8 @@ const HOLD := 1.0
 const BOIL_AT := 92.0
 const BOIL_TIME := 1.2
 const KEY_STIR_SPEED := TAU * 1.4
+## The most things a pot holds before it's too full
+const MAX_STEPS := 8
 const N64_LINES := 270.0
 
 ## "title", "intro", "play", "done", "over"
@@ -24,9 +26,16 @@ var clock := 0.0
 var heat := 10.0
 var orders: Array[Dictionary] = []
 var selected := -1
-var progress := 0
+## What's gone into the pot so far, as steps (Book step dictionaries)
+var brew: Array = []
+## Things found by brewing: effect -> {recipe, name}, written in the book
+var discoveries := {}
+## "shop" (the nights) or "free" (brewing whatever you like, tried out on the tower top)
+var mode := "shop"
 ## How far along the step that's being done is (heat held, turns stirred), 0 to 1
-var step_fill := 0.0
+## How near the heat held is to counting (0 to 1), and how far round the stick is in its turn
+var heat_fill := 0.0
+var stir_fill := 0.0
 var spoil_t := 0.0
 var learned := {}
 var done_kinds := {}
@@ -43,6 +52,11 @@ var testing := false
 
 var camera: Camera3D
 var hut: Hut
+var tower: Tower
+## The brew being tried out on the tower top, and how long since
+var tower_result := {}
+var tower_new := false
+var tower_t := 0.0
 ## The 3D, drawn small in here and blown up soft (the N64 filter), or full size with it off
 var view: SubViewport
 var screen: TextureRect
@@ -53,9 +67,11 @@ var sfx: Sfx
 var _spawn_t := 0.0
 var _hold := 0.0
 var _boil := 0.0
-var _stir_done := 0.0
-var _stir_wrong := 0.0
-var _stir_stray := 0.0
+var _band := 0
+var _band_t := 0.0
+var _band_counted := 0
+var _stir_dir := 0
+var _stir_run := 0.0
 var _stir_angle := 0.0
 var _stir_sound := 0.0
 var _stir_seen := 0.0
@@ -64,6 +80,7 @@ var _tick := 0
 var _next_order_id := 0
 var _last_kind := ""
 var _keys_down := {}
+var _discovered_now := false
 var _held: Node3D
 var _held_which := 0
 var _held_to := Vector3.ZERO
@@ -97,6 +114,10 @@ func _ready() -> void:
 	hut = Hut.new()
 	hut.name = "hut"
 	view.add_child(hut)
+	tower = Tower.new()
+	tower.name = "tower"
+	tower.position = Vector3(200, 0, 0)
+	view.add_child(tower)
 	camera = Camera3D.new()
 	camera.name = "camera"
 	camera.current = true
@@ -121,7 +142,14 @@ func _frame() -> void:
 	(screen.material as ShaderMaterial).set_shader_parameter("amount", 1.0 if n64 else 0.0)
 	(screen.material as ShaderMaterial).set_shader_parameter("size", Vector2(view.size))
 	var tall := s.y > s.x * 1.1
-	if tall:
+	if state == "tower":
+		# Up on the tower top, looking at the witch in the circle
+		camera.keep_aspect = Camera3D.KEEP_WIDTH if tall else Camera3D.KEEP_HEIGHT
+		camera.fov = 60.0 if tall else 50.0
+		camera.global_transform = tower.global_transform * tower.camera_at
+		if tall:
+			camera.global_position += camera.global_basis.z * 0.6 + Vector3(0, 0.3, 0)
+	elif tall:
 		# Phone: framed by width; you look down over the pot at the table and the window
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
 		camera.fov = 45.0
@@ -175,7 +203,7 @@ func tap(id: String) -> void:
 		"bellows":
 			pump()
 		"wand":
-			if night >= 3:
+			if night >= 3 or mode == "free":
 				zap()
 			else:
 				hut.poke(id, true)
@@ -208,6 +236,7 @@ func _to_title() -> void:
 
 
 func start_game() -> void:
+	mode = "shop"
 	night = 1
 	score = 0
 	learned = {}
@@ -222,7 +251,6 @@ func _start_night() -> void:
 	orders.clear()
 	selected = -1
 	_clear_customers()
-	progress = 0
 	spoil_t = 0.0
 	night_coins = 0
 	served = 0
@@ -255,6 +283,42 @@ func _start_night() -> void:
 		_say_witch(Book.rhyme("night"))
 	Sfx.play("night")
 	hut.night_progress(0.0)
+
+
+## Brewing whatever you like, no customers and no clock; bottled brews are tried out on the tower
+func start_free() -> void:
+	mode = "free"
+	state = "play"
+	paused = false
+	orders.clear()
+	selected = -1
+	_clear_customers()
+	hut.fresh()
+	_reset_brew()
+	hut.stock(8)
+	heat = 20.0
+	Sfx.music(true)
+	_say_witch(Book.rhyme("free"))
+
+
+func _to_tower(result: Dictionary) -> void:
+	state = "tower"
+	tower_result = result
+	tower_new = _discovered_now
+	tower_t = 0.0
+	hut.fresh()
+	_reset_brew()
+	_frame()
+	tower.try_out(result)
+
+
+## Back down from the tower to brew another
+func back_from_tower() -> void:
+	if state != "tower" or tower_t < 1.2:
+		return
+	state = "play"
+	_frame()
+	Sfx.play("tap")
 
 
 func begin_play() -> void:
@@ -301,7 +365,7 @@ func next_night() -> void:
 
 
 func toggle_pause() -> void:
-	if state in ["play", "intro"]:
+	if state in ["play", "intro", "tower"]:
 		paused = not paused
 		book_open = false
 		Sfx.music(not paused and state == "play")
@@ -310,11 +374,16 @@ func toggle_pause() -> void:
 
 func quit_to_title() -> void:
 	paused = false
+	if state == "tower":
+		state = "play"
+		_frame()
 	_to_title()
 
 
 func toggle_book() -> void:
 	book_open = not book_open
+	if book_open and not selected_order().is_empty():
+		selected_order().looked = true
 	Sfx.play("tap")
 
 
@@ -345,6 +414,8 @@ func _process(dt: float) -> void:
 		return
 	if state == "play":
 		_play(dt)
+	elif state == "tower":
+		tower_t += dt
 	else:
 		heat = move_toward(heat, 30.0 if state == "title" else 12.0, dt * 5.0)
 	hut.heat = heat
@@ -355,6 +426,9 @@ func _process(dt: float) -> void:
 
 
 func _play(dt: float) -> void:
+	if mode == "free":
+		_tend(dt)
+		return
 	clock -= dt
 	var length := Book.night_length(night)
 	hut.night_progress(1.0 - clock / length)
@@ -366,9 +440,6 @@ func _play(dt: float) -> void:
 	if clock <= 0.0:
 		_close_shop()
 		return
-	# The fire dies down by itself
-	heat = maxf(0.0, heat - (4.5 + heat * 0.045) * dt)
-	_keys_stir(dt)
 	# Customers
 	_spawn_t -= dt
 	if _spawn_t <= 0.0 and orders.size() < Book.most_waiting(night) and clock > 12.0:
@@ -383,44 +454,45 @@ func _play(dt: float) -> void:
 			_storm_off(i)
 	if orders.is_empty() and _spawn_t > 2.0:
 		_spawn_t = 2.0
-	# A spoilt brew sits murky a moment, then it's tipped out
+	_tend(dt)
+
+
+## The fire and the stick, every frame while brewing: boiling over spoils it; heat held in a band
+## a moment counts as that heat
+func _tend(dt: float) -> void:
+	heat = maxf(0.0, heat - (4.5 + heat * 0.045) * dt)
+	_keys_stir(dt)
+	_stir_seen = maxf(0.0, _stir_seen - dt)
+	hut.stirring = _stir_seen > 0.0
 	if spoil_t > 0.0:
 		spoil_t -= dt
 		if spoil_t <= 0.0:
 			hut.fresh()
 			_reset_brew()
 		return
-	# Boiling over
 	if heat >= BOIL_AT:
 		_boil += dt
 		if _boil >= BOIL_TIME:
 			_boil = 0.0
 			heat = 62.0
 			Sfx.play("hiss")
-			if progress > 0:
+			if not brew.is_empty():
 				_spoil(Book.rhyme("boil"))
 			else:
 				_say_witch(Book.rhyme("boil"))
 	else:
 		_boil = maxf(0.0, _boil - dt)
-	# Holding the heat at the right band
-	var want := current_step()
-	step_fill = 0.0
-	if want.get("kind", -1) == Book.HEAT:
-		if Book.band_of(heat) == want.level:
-			_hold += dt
-			if _hold >= HOLD:
-				_advance()
-		else:
-			_hold = maxf(0.0, _hold - dt * 2.0)
-		step_fill = _hold / HOLD
-	elif want.get("kind", -1) == Book.STIR:
-		step_fill = _stir_done / (TAU * want.turns)
-	# Forgive a little wobble of the ladle over time
-	_stir_wrong = maxf(0.0, _stir_wrong - dt * 0.6)
-	_stir_stray = maxf(0.0, _stir_stray - dt * 0.6)
-	_stir_seen = maxf(0.0, _stir_seen - dt)
-	hut.stirring = _stir_seen > 0.0
+	var band := Book.band_of(heat)
+	if band >= 1 and band == _band:
+		_band_t += dt
+		if _band_t >= HOLD and band > _band_counted and not brew.is_empty():
+			_band_counted = band
+			_record({"kind": Book.HEAT, "level": band})
+			Sfx.play("tap", 1.5, -2.0)
+	else:
+		_band = band
+		_band_t = 0.0
+	heat_fill = clampf(_band_t / HOLD, 0.0, 1.0) if band > _band_counted and not brew.is_empty() else 0.0
 
 
 func _eyes() -> void:
@@ -432,19 +504,6 @@ func _eyes() -> void:
 
 func selected_order() -> Dictionary:
 	return orders[selected] if selected >= 0 and selected < orders.size() else {}
-
-
-func current_step() -> Dictionary:
-	var o := selected_order()
-	if o.is_empty() or progress >= o.steps.size():
-		return {}
-	return o.steps[progress]
-
-
-## Whether the selected order's recipe is shown, or hidden because she ought to know it
-func recipe_hidden() -> bool:
-	var o := selected_order()
-	return night >= 4 and not o.is_empty() and learned.has(o.potion)
 
 
 # --- customers ---
@@ -496,28 +555,12 @@ func select(i: int) -> void:
 	var old := selected_order()
 	if not old.is_empty() and is_instance_valid(old.customer):
 		old.customer.duck(true)
-	var was := selected
 	selected = i
 	var o := orders[i]
 	o.customer.duck(false)
 	var line: String = Book.ORDER_LINES[o.id % Book.ORDER_LINES.size()] % Book.POTIONS[o.potion].name
 	_say_folk(line, o.who.voice, o.customer)
-	# The brew so far carries over if the new recipe starts the same way; otherwise out it goes
-	if was >= 0 and progress > 0 and spoil_t <= 0.0:
-		if not _same_start(old.steps, o.steps, progress):
-			hut.fresh()
-			_reset_brew()
-			Sfx.play("slosh", 0.7)
 	Sfx.play("tap")
-
-
-func _same_start(a: Array, b: Array, n: int) -> bool:
-	if b.size() < n:
-		return false
-	for i in n:
-		if a[i].hash() != b[i].hash():
-			return false
-	return true
 
 
 func _storm_off(i: int) -> void:
@@ -534,7 +577,6 @@ func _storm_off(i: int) -> void:
 
 func _remove_order(i: int) -> void:
 	var was_selected := i == selected
-	var old_steps: Array = orders[i].steps
 	orders.remove_at(i)
 	if selected > i:
 		selected -= 1
@@ -542,26 +584,19 @@ func _remove_order(i: int) -> void:
 		selected = -1
 		if not orders.is_empty():
 			# The next one up is whoever has waited longest
-			var prev_progress := progress
 			selected = 0
 			var o := orders[0]
-			o.customer.duck(false)
 			if is_instance_valid(o.customer):
+				o.customer.duck(false)
 				var line: String = Book.ORDER_LINES[o.id % Book.ORDER_LINES.size()] % Book.POTIONS[o.potion].name
 				_say_folk(line, o.who.voice, o.customer)
-			if prev_progress > 0 and spoil_t <= 0.0 and not _same_start(old_steps, o.steps, prev_progress):
-				hut.fresh()
-				_reset_brew()
-		elif spoil_t <= 0.0 and progress > 0:
-			hut.fresh()
-			_reset_brew()
 
 
 # --- what she does at the cauldron ---
 
 ## A key (or anything not dragged): it's thrown in from the table
 func add(which: int) -> void:
-	if not _brewing() or which >= Book.ingredients_on(night):
+	if not _brewing() or not stocked(which):
 		return
 	hut.poke("jar%d" % which)
 	hut.toss(which, _land)
@@ -569,7 +604,7 @@ func add(which: int) -> void:
 
 ## Picks an ingredient up off the table, to carry over to the pot
 func grab(which: int, at: Vector2) -> void:
-	if not _brewing() or which >= Book.ingredients_on(night):
+	if not _brewing() or not stocked(which):
 		hut.poke("jar%d" % which, true)
 		Sfx.play("huff", 1.5, -8.0)
 		return
@@ -628,7 +663,7 @@ func _land(which: int, at: Vector3) -> void:
 	Sfx.play("plop", randf_range(0.9, 1.15))
 	_last_added = which
 	_added_count += 1
-	_act({"kind": Book.ADD, "what": which})
+	_record({"kind": Book.ADD, "what": which})
 
 
 func pump() -> void:
@@ -641,30 +676,43 @@ func pump() -> void:
 
 
 func zap() -> void:
-	if not _brewing() or night < 3:
+	if not _brewing() or night < 3 and mode == "shop":
 		return
 	hut.wave_wand()
 	Sfx.play("zap")
-	_act({"kind": Book.ZAP})
+	_record({"kind": Book.ZAP})
 
 
+## Bottles what's in the pot: in the shop it goes to the customer, brewing freely it goes up the tower
 func bottle() -> void:
 	if not _brewing():
 		return
-	var want := current_step()
-	if want.get("kind", -1) == Book.BOTTLE:
-		hut.poke("bottle")
-		_serve()
-	else:
+	if brew.is_empty():
 		Sfx.play("huff", 1.4, -6.0)
 		hut.poke("bottle", true)
-		if not selected_order().is_empty():
-			_float("Not ready yet!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ffd0a0"))
+		_float("The pot's empty!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ffd0a0"))
+		return
+	var result := Lore.resolve(brew)
+	_discovered_now = not discoveries.has(result.effect) and result.effect != "nothing"
+	_discover(result)
+	if mode == "free":
+		hut.poke("bottle")
+		Sfx.play("cork")
+		_to_tower(result)
+		return
+	if selected_order().is_empty():
+		Sfx.play("huff", 1.4, -6.0)
+		hut.poke("bottle", true)
+		_float("Nobody to sell it to!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ffd0a0"))
+		return
+	hut.poke("bottle")
+	_serve(result)
 
 
 ## The ladle dragged round by `angle` radians (positive with the sun)
+## The stick dragged round by `angle` radians (positive with the sun); each whole turn counts
 func stir(angle: float) -> void:
-	if not _brewing() or night < 2 or absf(angle) < 0.0001:
+	if not _brewing() or night < 2 and mode == "shop" or absf(angle) < 0.0001:
 		return
 	_stir_angle += angle
 	hut.stir_angle = _stir_angle
@@ -674,25 +722,27 @@ func stir(angle: float) -> void:
 	if _stir_sound > PI * 0.6:
 		_stir_sound = 0.0
 		Sfx.play("slosh", randf_range(0.85, 1.15), -4.0)
-	var want := current_step()
 	var dir := 1 if angle > 0.0 else -1
-	if want.get("kind", -1) == Book.STIR:
-		if dir == want.dir:
-			_stir_done += absf(angle)
-			if _stir_done >= TAU * want.turns:
-				_advance()
-		else:
-			_stir_wrong += absf(angle)
-			if _stir_wrong > PI * 1.2:
-				_spoil(Book.rhyme("spoil"), "Wrong way round!")
-	elif not selected_order().is_empty():
-		_stir_stray += absf(angle)
-		if _stir_stray > TAU * 0.9:
-			_spoil(Book.rhyme("spoil"), "Not now, no stirring!")
+	if dir != _stir_dir:
+		_stir_dir = dir
+		_stir_run = 0.0
+	_stir_run += absf(angle)
+	if _stir_run >= TAU:
+		_stir_run -= TAU
+		if brew.is_empty():
+			return
+		_record({"kind": Book.STIR, "dir": dir, "turns": 1})
+		Sfx.play("tap", 1.3 if dir > 0 else 1.1, -3.0)
+	stir_fill = _stir_run / TAU
 
 
 func _brewing() -> bool:
 	return state == "play" and not paused and spoil_t <= 0.0
+
+
+## Whether an ingredient is on the table now: in the shop, as the nights bring them; brewing freely, all
+func stocked(which: int) -> bool:
+	return mode == "free" or which < Book.ingredients_on(night)
 
 
 func _keys_stir(dt: float) -> void:
@@ -706,41 +756,43 @@ func _keys_stir(dt: float) -> void:
 
 
 ## Something was done to the brew: right if it's the next step, spoilt if not
-func _act(did: Dictionary) -> void:
-	var want := current_step()
-	if want.is_empty():
-		_spoil("Nobody ordered that, you silly old thing!", "Nobody ordered that!")
+## Something was done to the brew: written down (a turn of the stick the same way as the last adds
+## to it; the fire's heat counts once, at its hottest), and the brew takes the colour of it all
+func _record(step: Dictionary) -> void:
+	var last: Dictionary = brew[-1] if not brew.is_empty() else {}
+	if step.kind == Book.STIR and last.get("kind", -1) == Book.STIR and last.dir == step.dir:
+		last.turns += 1
+	elif step.kind == Book.HEAT and last.get("kind", -1) == Book.HEAT:
+		last.level = maxi(last.level, step.level)
+	elif step.kind == Book.ZAP and last.get("kind", -1) == Book.ZAP:
 		return
-	if want.kind == did.kind and (did.kind != Book.ADD or want.what == did.what):
-		_advance()
 	else:
-		var what := "Wrong ingredient!" if did.kind == Book.ADD else "Not yet!"
-		_spoil(Book.rhyme("spoil"), what)
+		if brew.size() >= MAX_STEPS:
+			_spoil(Book.rhyme("spoil"), "The pot's too full!")
+			return
+		brew.append(step.duplicate())
+	done_kinds[step.kind] = done_kinds.get(step.kind, 0) + 1
+	hut.set_brew(Lore.resolve(brew).colour)
+	hud.tick_step(brew.size() - 1)
 
 
-func _advance() -> void:
-	var o := selected_order()
-	var st: Dictionary = o.steps[progress]
-	progress += 1
-	done_kinds[st.kind] = done_kinds.get(st.kind, 0) + 1
-	_hold = 0.0
-	_stir_done = 0.0
-	_stir_wrong = 0.0
-	_stir_stray = 0.0
-	# The brew takes on the colour of what went in
-	var col := Book.WATER
-	var added := 0
-	for k in progress:
-		var s: Dictionary = o.steps[k]
-		if s.kind == Book.ADD:
-			added += 1
-			col = col.lerp(Book.INGREDIENTS[s.what].brew, 1.0 if added == 1 else 0.5)
-		elif s.kind == Book.ZAP:
-			col = col.lightened(0.18)
-	hut.set_brew(col)
-	hud.tick_step(progress - 1)
-	if st.kind != Book.ADD:
-		Sfx.play("tap", 1.5, -2.0)
+## Tips the pot out to start again
+func tip_out() -> void:
+	if not _brewing() or brew.is_empty():
+		return
+	hut.poof()
+	hut.fresh()
+	Sfx.play("slosh", 0.6)
+	_reset_brew()
+
+
+## A brew bottled for the first time is written in the book, with how it was made
+func _discover(result: Dictionary) -> void:
+	if result.effect == "nothing" or discoveries.has(result.effect):
+		return
+	discoveries[result.effect] = {"name": Lore.name_of(result), "steps": brew.duplicate(true)}
+	_float("New in the book: " + String(result.effect).capitalize() + "!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 1.0, 0)), Color("c8f0ff"))
+	_save()
 
 
 func _spoil(rhyme: String, short := "") -> void:
@@ -755,46 +807,55 @@ func _spoil(rhyme: String, short := "") -> void:
 
 
 func _reset_brew() -> void:
-	progress = 0
+	brew.clear()
 	_last_added = -1
 	_added_count = 0
 	_hold = 0.0
-	_stir_done = 0.0
-	_stir_wrong = 0.0
-	_stir_stray = 0.0
+	_band_t = 0.0
+	_band_counted = 0
+	_stir_run = 0.0
 	spoil_t = 0.0
 
 
-func _serve() -> void:
+## Hands the brew over. What it does is what counts: the potion she asked for, made any way at all,
+## pays (more for a strong one, and a tip for speed); anything else she drinks anyway, and you see
+## what it does to her before she storms off
+func _serve(result: Dictionary) -> void:
 	var i := selected
 	var o := orders[i]
-	var steps: int = o.steps.size() - 1
-	var base := 10 + steps * 5
-	var tip := int(round(base * 0.6 * clampf(o.patience / o.full, 0.0, 1.0)))
-	combo += 1
-	var bonus := mini(combo - 1, 5) * 3
-	var coins := base + tip + bonus
-	night_coins += coins
-	score += coins
-	served += 1
-	learned[o.potion] = true
-	done_kinds[Book.BOTTLE] = done_kinds.get(Book.BOTTLE, 0) + 1
+	var wanted: String = Book.POTIONS[o.potion].effect
 	Sfx.play("cork")
-	Sfx.play("coins", 1.0, -2.0)
-	Sfx.play("cheer", 1.0, -4.0)
-	var at := screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.2, 0.3))
-	_float("+%d" % coins, at, Color("ffe060"), true)
-	if combo > 1:
-		_float("Combo x%d!" % combo, at + Vector2(0, 50), Color("a0ffb0"))
-	_fly_bottle(o.colour, o.customer)
-	if randf() < 0.6:
-		_say_witch(Book.rhyme("serve"))
+	if result.effect == wanted:
+		var base: int = 15 + (o.steps.size() - 1) * 5 + result.potency * 3
+		var tip := int(round(base * 0.6 * clampf(o.patience / o.full, 0.0, 1.0)))
+		combo += 1
+		var coins: int = base + tip + mini(combo - 1, 5) * 3
+		night_coins += coins
+		score += coins
+		served += 1
+		learned[o.potion] = true
+		Sfx.play("coins", 1.0, -2.0)
+		Sfx.play("cheer", 1.0, -4.0)
+		var at := screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.2, 0.3))
+		_float("+%d" % coins, at, Color("ffe060"), true)
+		if combo > 1:
+			_float("Combo x%d!" % combo, at + Vector2(0, 50), Color("a0ffb0"))
+		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.happy())
+		if randf() < 0.6:
+			_say_witch(Book.rhyme("serve"))
+	else:
+		combo = 0
+		lost += 1
+		Sfx.play("huff")
+		_float(Lore.name_of(result) + "?!", screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.3, 0.3)), Color("ff9a8a"))
+		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.drink(result, true))
+		_say_witch(Book.rhyme("wrong"))
 	_remove_order(i)
 	hut.fresh()
 	_reset_brew()
 
 
-func _fly_bottle(col: Color, customer: Witch) -> void:
+func _fly_bottle(col: Color, customer: Witch, then: Callable) -> void:
 	var b := Node3D.new()
 	b.add_child(Models.make("potion", Shape.mat(0.3)))
 	var liquid := Shape.mat(0.35)
@@ -810,7 +871,7 @@ func _fly_bottle(col: Color, customer: Witch) -> void:
 	tw.tween_callback(func() -> void:
 		b.queue_free()
 		if is_instance_valid(customer):
-			customer.happy())
+			then.call(customer))
 
 
 # --- talk ---
@@ -870,6 +931,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if state == "title":
 		if key.keycode in [KEY_SPACE, KEY_ENTER]:
 			start_game()
+		elif key.keycode == KEY_F:
+			start_free()
+		return
+	if state == "tower":
+		if key.keycode in [KEY_SPACE, KEY_ENTER]:
+			back_from_tower()
 		return
 	if state == "intro":
 		begin_play()
@@ -894,6 +961,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				select((selected + 1) % orders.size())
 		KEY_R:
 			toggle_book()
+		KEY_BACKSPACE, KEY_DELETE:
+			tip_out()
 
 
 func _load() -> void:
@@ -901,6 +970,7 @@ func _load() -> void:
 	if cfg.load(save_path) == OK:
 		best = cfg.get_value("shop", "best", 0)
 		n64 = cfg.get_value("shop", "n64", true)
+		discoveries = cfg.get_value("shop", "discoveries", {})
 		Sfx.set_muted(not cfg.get_value("shop", "sound", true))
 
 
@@ -909,4 +979,5 @@ func _save() -> void:
 	cfg.set_value("shop", "best", best)
 	cfg.set_value("shop", "sound", not sfx.muted)
 	cfg.set_value("shop", "n64", n64)
+	cfg.set_value("shop", "discoveries", discoveries)
 	cfg.save(save_path)

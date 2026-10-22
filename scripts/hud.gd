@@ -14,6 +14,8 @@ const GOLD := Color("f2c840")
 const GREEN := Color("7ad84a")
 const RED := Color("e8473a")
 const HOLD_PUMP := 0.3
+## How long a finger held still on the brew takes to tip it out
+const TIP_HOLD := 0.9
 
 var shop: Shop
 var buttons := {}
@@ -69,6 +71,14 @@ func _process(dt: float) -> void:
 			d[k] += dt
 			if d[k] > 0.6:
 				d.erase(k)
+	# A finger held still on the brew tips it out
+	for idx: int in _touches.keys():
+		var t: Dictionary = _touches[idx]
+		if t.get("id", "") == "stir" and t.get("still", 0.0) >= 0.0:
+			t.still = t.get("still", 0.0) + dt
+			if t.still >= TIP_HOLD:
+				t.still = -99.0
+				shop.tip_out()
 	# Holding the bellows keeps pumping
 	for idx: int in _held_pump.keys():
 		_held_pump[idx] -= dt
@@ -132,6 +142,8 @@ func _input(event: InputEvent) -> void:
 		if t.get("id", "") == "hold":
 			shop.drag_to(e.position)
 		elif t.get("id", "") == "stir":
+			if e.position.distance_to(t.get("from", e.position)) > 16.0:
+				t.still = -99.0
 			var cs := shop.cauldron_screen()
 			var c: Vector2 = cs[0]
 			var a0: float = (t.last - c).angle()
@@ -147,10 +159,19 @@ func _press(index: int, at: Vector2) -> void:
 		"title":
 			if _hit("sound", at):
 				shop.set_sound(Sfx.me.muted)
-				return
-			Sfx.play("tap")
-			shop.start_game()
+			elif _hit("go_shop", at):
+				Sfx.play("tap")
+				shop.start_game()
+			elif _hit("go_free", at):
+				Sfx.play("tap")
+				shop.start_free()
 			return
+		"tower":
+			if _hit("pause", at):
+				shop.toggle_pause()
+			elif not shop.paused:
+				shop.back_from_tower()
+				return
 		"intro":
 			if _hit("pause", at):
 				shop.toggle_pause()
@@ -185,8 +206,8 @@ func _press(index: int, at: Vector2) -> void:
 		return
 	var thing := shop.pick(at)
 	if thing == "" or thing == "stir":
-		# The pot, or anywhere else in the middle: stirring
-		_touches[index] = {"id": "stir", "last": at}
+		# The pot, or anywhere else in the middle: stirring (or, held still, tipping it out)
+		_touches[index] = {"id": "stir", "last": at, "from": at, "still": 0.0}
 		return
 	_touches[index] = {"id": thing, "last": at}
 	if thing.begins_with("jar"):
@@ -209,6 +230,11 @@ func _draw() -> void:
 		"title":
 			_draw_speech()
 			_draw_title()
+			return
+		"tower":
+			_draw_tower()
+			if shop.paused:
+				_draw_pause()
 			return
 	_draw_top()
 	_draw_tickets()
@@ -281,6 +307,11 @@ func _wrap(s: String, size: int, width: float) -> String:
 func _draw_top() -> void:
 	var w := size_now.x
 	draw_rect(Rect2(0, 0, w, 70), Color(0.08, 0.04, 0.12, 0.55))
+	if shop.mode == "free":
+		_text("BREWING FREELY", Vector2(18, 36), 34, Color("c8a0f0"), 9, HORIZONTAL_ALIGNMENT_LEFT)
+		_text("%d found" % shop.discoveries.size(), Vector2(w - 100, 36), 26, Color.WHITE, 7, HORIZONTAL_ALIGNMENT_RIGHT)
+		_button_pause(buttons.pause.rect)
+		return
 	_text("NIGHT %d" % shop.night, Vector2(18, 36), 34, GOLD, 9, HORIZONTAL_ALIGNMENT_LEFT)
 	# Coins this night against what the night needs
 	var q := Book.quota(shop.night)
@@ -353,108 +384,79 @@ func _draw_tickets() -> void:
 func _draw_stir_ring() -> void:
 	if shop.state != "play":
 		return
-	var want := shop.current_step()
-	if want.get("kind", -1) != Book.STIR:
-		return
 	var cs := shop.cauldron_screen()
 	var c: Vector2 = cs[0]
-	var r: float = cs[1] * 1.15
-	var dir: int = want.dir
-	var col := Color(0.55, 0.85, 1.0, 0.75) if dir > 0 else Color(1.0, 0.62, 0.82, 0.75)
-	# Dashes going round the way to stir
-	for i in 12:
-		var a := TAU * i / 12.0 + _t * 2.5 * dir
-		var a2 := a + 0.3
-		draw_arc(c, r, a, a2, 6, col, 7, true)
-	var tip_a := _t * 2.5 * dir + PI * 0.5
-	var tip := c + Vector2.from_angle(tip_a) * r
-	var along := Vector2.from_angle(tip_a + PI * 0.5 * dir)
-	Icons.blob(self, PackedVector2Array([tip + along * 22, tip + along.orthogonal() * 14, tip - along.orthogonal() * 14]), Color(col, 1.0), 4)
-	var turns: int = want.turns
-	var done := int(floor(shop.step_fill * turns + 0.0001))
-	_text("%s  %d / %d" % ["STIR RIGHT" if dir > 0 else "STIR LEFT", mini(done, turns), turns], c + Vector2(0, -r * 0.62 - 40), 28, Color(col, 1.0).lightened(0.4), 8)
+	var r: float = cs[1] * 1.12
+	# How far round this turn of the stick is (a turn counts when it comes all the way round)
+	if shop.stir_fill > 0.02 and shop.hut.stirring:
+		var dir: int = shop._stir_dir
+		var col := Color(0.55, 0.85, 1.0, 0.8) if dir > 0 else Color(1.0, 0.62, 0.82, 0.8)
+		var a0 := -PI * 0.5
+		draw_arc(c, r, a0, a0 + TAU * shop.stir_fill * dir, 40, col, 9, true)
+	# Held still on the brew: tipping it out
+	for t: Dictionary in _touches.values():
+		if t.get("id", "") == "stir" and t.get("still", 0.0) > 0.25 and not shop.brew.is_empty():
+			var k: float = clampf((t.still - 0.25) / (TIP_HOLD - 0.25), 0.0, 1.0)
+			draw_arc(t.last, 60, -PI * 0.5, -PI * 0.5 + TAU * k, 32, Color("ff9a6a"), 10, true)
+			_text("Tip it out", t.last + Vector2(0, -84), 24, Color("ffd0a0"), 7)
 
 
 func _draw_gauge() -> void:
 	var g := _gauge
 	_box(g.grow(6), WOOD, INK, 4, 16)
 	var bands := Book.HEAT_BANDS
-	var want := shop.current_step()
-	var want_level: int = want.level if want.get("kind", -1) == Book.HEAT else -1
 	for b in 4:
 		var y0: float = g.end.y - g.size.y * bands[b] / 100.0
 		var y1: float = g.end.y - g.size.y * minf(bands[b + 1], 100.0) / 100.0
-		var col: Color = Book.HEAT_COLOURS[b]
-		if want_level >= 0 and b != want_level:
-			col = col.darkened(0.45)
-		draw_rect(Rect2(g.position.x, y1, g.size.x, y0 - y1), col)
-		if b == want_level:
-			var pulse := 0.5 + 0.5 * sin(_t * 8.0)
-			draw_rect(Rect2(g.position.x - 4, y1, g.size.x + 8, y0 - y1), Color(1, 1, 1, 0.25 + pulse * 0.35), false, 4)
-			# Little arrows pointing at the band wanted
-			var mid := (y0 + y1) * 0.5
-			var ax := g.position.x - 12
-			Icons.blob(self, PackedVector2Array([Vector2(ax, mid), Vector2(ax - 18, mid - 12), Vector2(ax - 18, mid + 12)]), Color.WHITE, 3)
-	# Over the top: boiling over
+		draw_rect(Rect2(g.position.x, y1, g.size.x, y0 - y1), Book.HEAT_COLOURS[b])
 	var top_y: float = g.end.y - g.size.y * bands[4] / 100.0
 	draw_rect(Rect2(g.position.x, g.position.y, g.size.x, top_y - g.position.y), Color("ff2a6a") if int(_t * 6.0) % 2 == 0 and shop.heat > Book.HEAT_BANDS[4] else Color("8a1a3a"))
 	draw_rect(g, INK, false, 3)
 	var y := g.end.y - g.size.y * clampf(shop.heat, 0.0, 100.0) / 100.0
 	Icons.blob(self, PackedVector2Array([Vector2(g.position.x - 8, y - 10), Vector2(g.end.x + 8, y - 10), Vector2(g.end.x + 8, y + 10), Vector2(g.position.x - 8, y + 10)]), Color.WHITE, 4)
+	# Filling while a heat is held long enough to count
+	if shop.heat_fill > 0.0:
+		draw_arc(Vector2(g.get_center().x, y), 26, -PI * 0.5, -PI * 0.5 + TAU * shop.heat_fill, 24, Color("ffe060"), 6, true)
 	var band := Book.band_of(shop.heat)
 	if shop.heat >= Book.HEAT_BANDS[4]:
-		_text("TOO\nHOT!", Vector2(g.get_center().x, g.position.y - 40), 22, Color("ff8a9a"), 7)
+		_text("TOO\nHOT!", Vector2(g.get_center().x - 8, g.position.y - 40), 22, Color("ff8a9a"), 7)
 	else:
-		_text(Book.HEAT_NAMES[band], Vector2(g.get_center().x - (10 if tall else 0), g.position.y - 26), 20, Book.HEAT_COLOURS[band], 7)
+		_text(Book.HEAT_NAMES[band], Vector2(g.get_center().x - 14, g.position.y - 24), 20, Book.HEAT_COLOURS[band], 7)
 
 
+## The page at the foot of the screen: what she asked for (just the name: the book has the rest),
+## and what has gone into the pot so far, in order
 func _draw_strip() -> void:
 	var o := shop.selected_order()
 	var r := _strip
 	_box(r, PARCH, INK, 5, 20)
-	if o.is_empty():
-		_text("Waiting for customers..." if shop.state == "play" else "", r.get_center(), 28, Color("8a6a4a"), 0)
+	var title := ""
+	if shop.mode == "free":
+		title = "Brew what you like; bottle it for the tower"
+	elif not o.is_empty():
+		title = "\"%s\"" % Book.POTIONS[o.potion].name
+	elif shop.state == "play":
+		title = "Waiting for customers..."
+	_text(title, Vector2(r.position.x + 18, r.position.y + 4), 24, GOLD, 7, HORIZONTAL_ALIGNMENT_LEFT)
+	var steps: Array = shop.brew
+	var cy := r.position.y + r.size.y * 0.58
+	if steps.is_empty():
+		_text("The pot holds only water.", Vector2(r.get_center().x, cy), 24, Color("8a6a4a"), 0, HORIZONTAL_ALIGNMENT_CENTER, font)
 		return
-	var steps: Array = o.steps
-	var hidden := shop.recipe_hidden()
-	var name: String = Book.POTIONS[o.potion].name
-	_text(name, Vector2(r.position.x + 18, r.position.y + 2), 22, GOLD, 7, HORIZONTAL_ALIGNMENT_LEFT)
-	var n := steps.size()
-	var slot := minf(96.0, (r.size.x - 30) / n)
-	var x0 := r.get_center().x - slot * n * 0.5
-	var cy := r.position.y + r.size.y * 0.56
-	var icon := slot * 0.78
-	for i in n:
+	var slot := minf(84.0, (r.size.x - 30) / maxf(steps.size(), 1))
+	var x0 := r.position.x + 18
+	for i in steps.size():
 		var c := Vector2(x0 + slot * (i + 0.5), cy)
 		var st: Dictionary = steps[i]
-		var done := i < shop.progress
-		var now := i == shop.progress and shop.spoil_t <= 0.0
-		if now:
-			var pulse := 1.0 + sin(_t * 7.0) * 0.06
-			draw_circle(c, slot * 0.47 * pulse, GOLD)
-			draw_arc(c, slot * 0.47 * pulse, 0, TAU, 32, INK, 4, true)
-			if shop.step_fill > 0.0:
-				draw_arc(c, slot * 0.47 * pulse - 6, -PI * 0.5, -PI * 0.5 + TAU * shop.step_fill, 32, Color("3aa04a"), 8, true)
-		else:
-			draw_circle(c, slot * 0.42, PARCH_D if not done else Color("c8e8b0"))
-		if hidden and not done and not now and st.kind != Book.BOTTLE:
-			_text("?", c, int(icon * 0.7), Color("8a6a4a"), 0)
-		elif hidden and now and st.kind != Book.BOTTLE:
-			_text("?", c, int(icon * 0.7), INK, 0)
-		else:
-			var pop := 1.0
-			if _ticks.has(i):
-				pop = 1.0 + sin(_ticks[i] / 0.6 * PI) * 0.35
-			Icons.step(self, st, c, icon * pop * (0.85 if done else 1.0))
-			if st.kind == Book.STIR:
-				_text("x%d" % st.turns, c + Vector2(slot * 0.3, slot * 0.3), int(slot * 0.28), Color.WHITE, 6)
-			elif st.kind == Book.HEAT:
-				_text(Book.HEAT_NAMES[st.level], c + Vector2(0, slot * 0.42), int(slot * 0.19), Book.HEAT_COLOURS[st.level], 5)
-		if done:
-			_check(c + Vector2(slot * 0.25, -slot * 0.22), slot * 0.22)
-		if i < n - 1:
-			var a := c + Vector2(slot * 0.47, 0)
-			draw_circle(a, 4, Color("8a6a4a"))
+		var pop := 1.0
+		if _ticks.has(i):
+			pop = 1.0 + sin(_ticks[i] / 0.6 * PI) * 0.35
+		draw_circle(c, slot * 0.44, PARCH_D)
+		Icons.step(self, st, c, slot * 0.74 * pop)
+		if st.kind == Book.STIR:
+			_text("x%d" % st.turns, c + Vector2(slot * 0.3, slot * 0.3), int(slot * 0.3), Color.WHITE, 6)
+		elif st.kind == Book.HEAT:
+			_text(Book.HEAT_NAMES[st.level], c + Vector2(0, slot * 0.42), int(slot * 0.2), Book.HEAT_COLOURS[st.level], 5)
 	if shop.spoil_t > 0.0:
 		_box(r.grow(-6), Color(0.3, 0.22, 0.12, 0.85), INK, 0, 16, false)
 		_text("Spoilt! Tipping it out...", r.get_center(), 30, Color("ffcf9a"), 8)
@@ -533,35 +535,15 @@ func _draw_floaters() -> void:
 		draw_string(font_bold, base, f.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
 
-## A pointing hand over what to press next, until she's done each kind of step a few times
+## A pointing hand at the book while a customer wants something not made yet
 func _draw_hint() -> void:
-	if shop.state != "play" or shop.spoil_t > 0.0 or shop.paused:
+	if shop.state != "play" or shop.paused or shop.book_open or shop.mode != "shop":
 		return
-	var want := shop.current_step()
-	if want.is_empty() or shop.done_kinds.get(want.kind, 0) >= 3 or shop.recipe_hidden():
+	var o := shop.selected_order()
+	if o.is_empty() or shop.learned.has(o.potion) or o.get("looked", false):
 		return
-	var target := Vector2.ZERO
-	match want.kind:
-		Book.ADD:
-			var from := shop.spot_screen("jar%d" % want.what)
-			var to: Vector2 = shop.cauldron_screen()[0]
-			var k := fmod(_t * 0.8, 1.0)
-			target = from.lerp(to, smoothstep(0.15, 0.85, k))
-		Book.HEAT:
-			if Book.band_of(shop.heat) < want.level:
-				target = shop.spot_screen("bellows")
-			else:
-				return
-		Book.ZAP:
-			target = shop.spot_screen("wand")
-		Book.BOTTLE:
-			target = shop.spot_screen("bottle")
-		Book.STIR:
-			var cs := shop.cauldron_screen()
-			var a: float = _t * 3.0 * want.dir
-			target = cs[0] + Vector2(cos(a), sin(a) * 0.5) * cs[1] * 0.8
 	var bob := absf(sin(_t * 6.0)) * 14.0
-	_hand(target + Vector2(10, 18 + bob))
+	_hand(shop.spot_screen("book") + Vector2(10, 18 + bob))
 
 
 func _hand(tip: Vector2) -> void:
@@ -600,12 +582,17 @@ func _draw_title() -> void:
 		x += cw
 	_text("Granny Grumblewart's Potion Shop", Vector2(w * 0.5, cy + fs * 0.55), 32 if tall else 38, PARCH, 9)
 	var pulse := 1.0 + sin(_t * 5.0) * 0.05
-	var tap := "TAP TO START BREWING!" if tall else "CLICK OR PRESS SPACE TO START BREWING!"
-	_text(tap, Vector2(w * 0.5, h - (220 if tall else 120)), int(36 * pulse), GOLD, 10)
+	var bw := minf(w - 80, 520.0)
+	var by := h - (330 if tall else 300)
+	for i in 2:
+		var id: String = ["go_shop", "go_free"][i]
+		var br := Rect2(w * 0.5 - bw * 0.5, by + i * 110, bw, 92)
+		buttons[id] = {"rect": br}
+		_box(br.grow(4 if i == 0 else 0), [GREEN, Color("b890f0")][i], INK, 5, 24)
+		_text(["Open the Shop", "Brew Freely in the Tower"][i], br.get_center() + Vector2(0, -8), int((36 if i == 0 else 30) * (pulse if i == 0 else 1.0)), Color.WHITE, 9)
+		_text(["Customers, orders, a coin to earn each night", "Make anything, and watch a witch drink it"][i], br.get_center() + Vector2(0, 28), 18, Color(1, 1, 1, 0.85), 5)
 	if shop.best > 0:
-		_text("Best: %d coins" % shop.best, Vector2(w * 0.5, h - (160 if tall else 70)), 28, Color.WHITE, 8)
-	var how := "Brew each order in the right order:\ningredients, heat, stirring and the wand, then bottle it!"
-	_text(how, Vector2(w * 0.5, h - (95 if tall else 190)), 22 if tall else 26, Color("d8c8f0"), 7)
+		_text("Best: %d coins" % shop.best, Vector2(w * 0.5, by - 40), 28, Color.WHITE, 8)
 	var r := Rect2(w - 84, 14, 70, 60)
 	buttons["sound"] = {"rect": r}
 	_box(r, WOOD_L, INK, 4, 14)
@@ -697,3 +684,27 @@ func _draw_book() -> void:
 			if steps[i].kind == Book.STIR:
 				_text("x%d" % steps[i].turns, c + Vector2(icon * 0.3, icon * 0.3), int(icon * 0.3), Color.WHITE, 5)
 	_text("Tap to close", Vector2(r.get_center().x, r.end.y - 18), 22, Color("6a4a3a"), 0)
+
+
+## Up on the tower top: who's trying it, what it is, and what the book says it does
+func _draw_tower() -> void:
+	var w := size_now.x
+	var h := size_now.y
+	var res: Dictionary = shop.tower_result
+	_button_pause(buttons.pause.rect)
+	_text(shop.tower.tester_name() + " tries it...", Vector2(w * 0.5, 120), 30, PARCH, 9)
+	if shop.tower_t < 1.4:
+		return
+	var r := Rect2(w * 0.5 - minf(320, w * 0.45), h - (420 if tall else 330), minf(640, w * 0.9), 300 if tall else 260)
+	_box(r.grow(6), GOLD, INK, 5, 26)
+	_box(r, PARCH, INK, 5, 22)
+	var title := Lore.name_of(res)
+	_text(title, Vector2(r.get_center().x, r.position.y + 44), 34, Color("7a3aa8"), 0)
+	var about: String = Lore.DESCRIBE.get(res.effect, "")
+	_text(_wrap(about, 24, r.size.x - 60), Vector2(r.get_center().x, r.position.y + 118), 24, INK, 0, HORIZONTAL_ALIGNMENT_CENTER, font)
+	for i in 5:
+		Icons.star(self, Vector2(r.get_center().x - 90 + i * 45, r.position.y + 184), 16, GOLD if i < res.potency else Color("c8b890"), 3.0)
+	if shop.tower_new:
+		_text("New! Written in your book.", Vector2(r.get_center().x, r.position.y + 226), 24, Color("3a8a2a"), 0)
+	var pulse := 1.0 + sin(_t * 5.0) * 0.04
+	_text("Tap to brew another", Vector2(r.get_center().x, r.end.y - 22), int(24 * pulse), Color("8a6a4a"), 0)

@@ -1172,6 +1172,82 @@ def build_props():
     out["bellows"] = out_b
     out["bellows_top"] = [topb, top_handle]
 
+
+    # The top of the witches' tower, where brews are tried out: a round stone floor with a chalked
+    # circle, a ring of battlements, a trapdoor, a lectern for the book, a pennant on a pole.
+    # Its middle (where the witch stands) is the origin.
+    tower = []
+    rnd_t = random.Random(31)
+    floor_ = lathe("tower_floor", [(-0.6, 3.0, 3.0), (-0.1, 3.0, 3.0), (0.0, 2.95, 2.95)], seg=32, sub=0)
+
+    def flags(co, n):
+        r = math.hypot(co.x, co.y)
+        a = math.atan2(co.y, co.x)
+        if n.z > 0.5:
+            # Flagstones in rings, the chalk circle and its star
+            ring_k = math.floor(r / 0.6)
+            cell = math.floor(a * (3 + ring_k * 2) / math.pi)
+            shade_k = 0.06 * ((ring_k * 7 + cell * 3) % 4)
+            c = lin("#8a8298").lerp(lin("#5a5468"), shade_k * 2)
+            if abs(r - 1.05) < 0.035 or abs(r - 0.92) < 0.025:
+                c = lin("#f0ecf8")
+            for k in range(5):
+                p1 = Vector((math.cos(math.pi / 2 + k * 4 * math.pi / 5), math.sin(math.pi / 2 + k * 4 * math.pi / 5), 0)) * 0.92
+                p2 = Vector((math.cos(math.pi / 2 + (k + 1) * 4 * math.pi / 5), math.sin(math.pi / 2 + (k + 1) * 4 * math.pi / 5), 0)) * 0.92
+                d = p2 - p1
+                t = max(0.0, min(1.0, (Vector((co.x, co.y, 0)) - p1).dot(d) / d.length_squared))
+                if (Vector((co.x, co.y, 0)) - (p1 + d * t)).length < 0.025:
+                    c = lin("#f0ecf8")
+            return c
+        return lin("#6a6278") * (0.7 + 0.3 * max(0.0, n.z))
+    # A finer floor so the chalk shows: subdivide it flat
+    sub_floor = floor_.modifiers.new("sub", "SUBSURF")
+    sub_floor.subdivision_type = "SIMPLE"
+    sub_floor.levels = 3
+    floor_ = bake(floor_)
+    paint(floor_, flags)
+    tower.append(floor_)
+    wall = lathe("tower_wall", [(-30.0, 3.4, 3.4), (-3.0, 3.1, 3.1), (0.6, 3.1, 3.1), (0.6, 2.75, 2.75), (0.0, 2.75, 2.75)], seg=40, sub=0, cap_top=False, cap_bottom=False)
+
+    def stones(co, n):
+        a = math.atan2(co.y, co.x)
+        row = math.floor(co.z / 0.3)
+        col_k = math.floor(a * 12 / math.pi + (0.5 if row % 2 else 0.0))
+        k = ((row * 5 + col_k * 3) % 5) * 0.05
+        mortar = abs(co.z / 0.3 - round(co.z / 0.3)) < 0.06
+        c = lin("#7a7090").lerp(lin("#4a4460"), k * 2.5)
+        return c * (0.55 if mortar else 1.0)
+    paint(wall, stones)
+    tower.append(wall)
+    for k in range(16):
+        a = 2 * math.pi * k / 16
+        merlon = box("merlon", (math.cos(a) * 2.93, math.sin(a) * 2.93, 0.95), (0.5, 0.36, 0.7), bevel=0.03, rot=Matrix.Rotation(a, 3, "Z"))
+        paint(merlon, lambda co, n, s=rnd_t.uniform(0, 0.15): lin("#857b9a").lerp(lin("#5a5470"), s + 0.2 * max(0.0, -n.z)))
+        tower.append(merlon)
+    trap = box("trapdoor", (1.7, 0.9, 0.02), (0.7, 0.7, 0.04), bevel=0.01, rot=Matrix.Rotation(0.4, 3, "Z"))
+    paint(trap, lambda co, n: lin("#8a5228") if (math.sin(co.x * 25) > -0.8) else lin("#5a3418"))
+    ringpull = ring("trap_ring", (1.62, 0.78, 0.05), 0.06, 0.012, seg=12, sides=5)
+    paint(ringpull, lambda co, n: lin("#3a3346"))
+    tower += [trap, ringpull]
+    lectern = grow("lectern", [(-1.6, 1.0, 0.0), (-1.6, 1.0, 0.9)], [(0, 1)], [0.07, 0.05], sub=0)
+    paint(lectern, lambda co, n: lin("#6b3e22"))
+    top_l = box("lectern_top", (-1.6, 1.0, 0.95), (0.5, 0.36, 0.05), bevel=0.01, rot=Matrix.Rotation(-0.4, 3, "X"))
+    paint(top_l, lambda co, n: lin("#8a5228"))
+    tower += [lectern, top_l]
+    pole = tube("pole", (2.2, -1.6, 0.0), (2.2, -1.6, 3.2), 0.04, 0.035, seg=8)
+    paint(pole, lambda co, n: lin("#5a3418"))
+    pennant = flat("pennant", [(0, 0), (0.9, -0.18), (0.0, -0.4)], 0.01, (2.2, -1.6, 3.15), Matrix.Rotation(math.pi / 2, 3, "X") @ Matrix.Rotation(0.4, 3, "Y"), sub=1)
+    paint(pennant, lambda co, n: lin("#8a55c8"))
+    tower += [pole, pennant]
+    for k, (x, y) in enumerate(((-2.2, -1.2), (2.3, 0.9), (-0.6, 2.4))):
+        candle = tube("candle", (x, y, 0.0), (x, y, 0.25 + k * 0.06), 0.06, 0.055, seg=8)
+        paint(candle, lambda co, n: lin("#f4ecd0"))
+        flame_ = egg("glow_flame", (x, y, 0.32 + k * 0.06), (0.04, 0.04, 0.08), seg=8, rings=5, sub=0)
+        paint(flame_, lambda co, n: lin("#ffd060"))
+        tower += [candle, flame_]
+    out["tower_top"] = tower
+
+
     # The stirring stick: a long wooden paddle. Origin at the top end; it runs along +Y to the blade.
     stick = tube("stick", (0, 0, 0), (0, 1.25, 0), 0.04, 0.035, seg=10, sub=1)
     paint(stick, lambda co, n: lin("#b07a40").lerp(lin("#7a4a24"), 0.5 * (math.sin(co.y * 30) > 0.7)))

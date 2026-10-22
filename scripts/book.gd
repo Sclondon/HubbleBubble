@@ -42,30 +42,67 @@ const HEAT_NAMES := ["COLD", "WARM", "HOT", "ROARING"]
 const HEAT_BANDS := [0.0, 22.0, 47.0, 72.0, 92.0]
 const HEAT_COLOURS := [Color("7fb8ff"), Color("ffd84a"), Color("ff9a2e"), Color("ff4a2a")]
 
-## Recipes, written short: an ingredient's id adds it; H1-H3 brings it warm, hot or roaring;
-## S+2 stirs it round twice with the sun, S-1 once against; Z is a zap of the wand.
-## Every recipe ends with bottling. `night` is the first night it is ordered.
+## The potions customers ask for, after the old cunning-folk remedies and curses. Recipes are
+## written short: an ingredient's id adds it; H1-H3 brings it warm, hot or roaring; S+2 stirs it
+## sunwise twice, S-1 widdershins once; Z quickens it with the wand. Each recipe is one way to the
+## potion's `effect` (Lore decides what a brew does; any brew with that effect will do).
+## `night` is the first night it's asked for; `about` is what the book says of it.
 const POTIONS := [
-	{"name": "Hiccup Tonic", "recipe": "leg eye H1", "night": 1},
-	{"name": "Bat-Eyed Brew", "recipe": "wing eye H2", "night": 1},
-	{"name": "Toadstool Soup", "recipe": "shroom H1 shroom", "night": 1},
-	{"name": "Belch Broth", "recipe": "shroom leg H2", "night": 1},
-	{"name": "Night Sight", "recipe": "eye wing H1 eye", "night": 1},
-	{"name": "Spider Cider", "recipe": "spider H2 S+2", "night": 2},
-	{"name": "Wobble Juice", "recipe": "leg S+1 shroom S-1", "night": 2},
-	{"name": "Creepy Cream", "recipe": "spider eye S-2", "night": 2},
-	{"name": "Grumble Gargle", "recipe": "wing H3 S+2 shroom", "night": 2},
-	{"name": "Moonlight Elixir", "recipe": "petal H1 Z", "night": 3},
-	{"name": "Love Draught", "recipe": "petal shroom S+2 Z", "night": 3},
-	{"name": "Shrinking Syrup", "recipe": "spider petal H2 S-1 Z", "night": 3},
-	{"name": "Bounce Potion", "recipe": "leg leg H3 S+1 Z", "night": 3},
-	{"name": "Ghostly Gargle", "recipe": "pepper H1 S-2 eye Z", "night": 4},
-	{"name": "Dragon's Breath", "recipe": "scale H3 pepper S+3", "night": 4},
-	{"name": "Witch's Wonder", "recipe": "scale petal H2 S+1 wing Z", "night": 4},
-	{"name": "Fireball Fizz", "recipe": "scale shroom H3 Z S-2", "night": 4},
-	{"name": "Vanishing Ink", "recipe": "pepper spider H1 Z S+2 eye", "night": 5},
-	{"name": "Giant's Grog", "recipe": "leg scale H3 S-1 shroom H1 Z", "night": 5},
+	{"name": "Sleeping Draught", "effect": "sleep", "recipe": "shroom wing H1", "night": 1,
+		"about": "For the babe that will not settle, or the husband that snores. A toadstool's dreaming, warmed gently, with a bat's wing for the dark."},
+	{"name": "Cat's Eye Tincture", "effect": "second sight", "recipe": "eye leg H2", "night": 1,
+		"about": "Two drops, and the night is bright as noon, as it is to the cat. The eye of a newt, heated till it spits."},
+	{"name": "Spring-Heel Tonic", "effect": "bouncing", "recipe": "leg eye H1", "night": 1,
+		"about": "Old Jack drank it and leapt the churchyard wall. A frog's leg, warmed; it remembers jumping."},
+	{"name": "Wakeful Brew", "effect": "wakefulness", "recipe": "shroom H2 S-1", "night": 2,
+		"about": "For the night watchman. Take the dreams out of a toadstool by turning it against the sun."},
+	{"name": "Statue's Stillness", "effect": "stillness", "recipe": "spider eye H1", "night": 2,
+		"about": "Holds a thief stock still till the constable comes. The spider binds what she touches."},
+	{"name": "Toad's Curse", "effect": "toadishness", "recipe": "leg spider H2 S+1", "night": 2,
+		"about": "For the neighbour who will not mend his fence. What leaps, bound fast, becomes a toad."},
+	{"name": "Hair-Raising Rinse", "effect": "wild hair", "recipe": "spider H1 S-2", "night": 2,
+		"about": "A fright in a bottle. Unbind the spider, widdershins, and every hair goes its own way."},
+	{"name": "Love Philtre", "effect": "love at first sight", "recipe": "petal eye H1 S+1 Z", "night": 3,
+		"about": "Pour it in a cup of mead, and the one who drinks will follow you like a lamb. The moon's petal for the heart, an eye for the first sight; quicken it, or it flies off."},
+	{"name": "Bitter Draught", "effect": "loathing", "recipe": "petal H2 S-1 Z", "night": 3,
+		"about": "To sour a sweetheart who will not leave you be. Love, turned against the sun, curdles."},
+	{"name": "Flying Ointment", "effect": "floating", "recipe": "wing shroom H2 Z", "night": 3,
+		"about": "Rubbed on a broom, or drunk by a fool: either way, up they go. The bat's wing wants the wand's spark to lift."},
+	{"name": "Leaden Sorrow", "effect": "heaviness", "recipe": "wing H1 S-2 Z", "night": 3,
+		"about": "It weighs on the drinker like a bad conscience. Flight, unwound."},
+	{"name": "Sweet Dreams", "effect": "sweet dreams", "recipe": "shroom petal H1", "night": 3,
+		"about": "A lullaby you can drink. Dreams first, then a moon petal to sweeten them."},
+	{"name": "Giant's Grog", "effect": "growing", "recipe": "scale leg H3", "night": 4,
+		"about": "Brewed for the blacksmith; now he cannot fit through his door. A dragon's might, roused to a roar."},
+	{"name": "Shrinking Solution", "effect": "shrinking", "recipe": "scale H2 S-2", "night": 4,
+		"about": "For hiding in a mouse hole, or under a hat. Might, wound back the wrong way."},
+	{"name": "Vanishing Draught", "effect": "vanishing", "recipe": "pepper wing H1 Z", "night": 4,
+		"about": "As mist at morning: there, and then not. The ghost in the pepper must be quickened."},
+	{"name": "Dragon's Breath", "effect": "dragon's breath", "recipe": "pepper scale H3 Z", "night": 4,
+		"about": "Lights the hearth, and the curtains, and the cat. Spirit and might together, roaring."},
+	{"name": "Ghost Sight", "effect": "ghost sight", "recipe": "pepper eye H2 Z", "night": 4,
+		"about": "See the dead as they see you. A spirit, and an eye to see it with."},
+	{"name": "Moon Jump Elixir", "effect": "moon jump", "recipe": "wing leg H2 S+2 Z", "night": 5,
+		"about": "Up over the moon, like the cow in the rhyme. Flight, with a leap in it."},
+	{"name": "Haunting Mist", "effect": "haunting", "recipe": "pepper H1 S-1 Z", "night": 5,
+		"about": "Brings the restless dead round to wail at a door. The pepper's ghost, turned widdershins."},
 ]
+
+
+## A step in the book's old words
+static func old_words(s: Dictionary) -> String:
+	match s.kind:
+		ADD:
+			return ["an Eye of Newt", "a Toadstool", "a Bat's Wing", "a Frog's Leg", "a Spider", "a Moon Petal",
+					"a Ghost Pepper", "a Dragon's Scale"][s.what]
+		HEAT:
+			return ["", "warm it till it sighs", "heat it till it spits", "rouse it to a roar"][s.level]
+		STIR:
+			var times: String = ["", "once", "twice", "thrice", "four times", "five times", "six times"][mini(s.turns, 6)]
+			return "stir it %s %s" % ["sunwise" if s.dir > 0 else "widdershins", times]
+		ZAP:
+			return "quicken it with the wand"
+	return "and stopper it fast"
 
 ## Who comes to the window: other witches (models/witch_<model>.glb). `voice` is how high they talk;
 ## the colours are for the little face on their ticket.
@@ -120,6 +157,17 @@ const RHYMES := {
 		"Off they stomp, the grumpy lout,\nslowcoach witch, you've missed them out!",
 		"Waited long and left in a huff,\nmy brewing wasn't quick enough!",
 	],
+	"free": [
+		"Brew what you will and brew what you please,\nthen up to the tower, and see what it sees!",
+	],
+	"wrong": [
+		"That's not what she asked for, dear,
+and now look what's happened here!",
+		"Oh, botheration, wrong again,
+she'll not be back here, that I'll ken!",
+		"Wrong brew, wrong bottle, wrong old witch,
+my reputation's in the ditch!",
+	],
 	"wrong_order": [
 		"That brew won't do for this one, dear,\nI'll tip it out and start it here.",
 	],
@@ -138,7 +186,7 @@ const RHYMES := {
 		"Now a zap of my magic wand,\nof sparkly brews I'm very fond!",
 	],
 	"new_hidden": [
-		"Potions you've made, you ought to know!\nForgot? The book's on the shelf below.",
+		"They'll only say the name, you see,\nthe book will tell the rest to me!",
 	],
 }
 

@@ -30,6 +30,18 @@ func _initialize() -> void:
 func _run() -> void:
 	await _frames(10)
 	await _shot("title")
+	if only.begins_with("tower"):
+		main.start_free()
+		await _frames(5)
+		var recipe := "wing shroom H2 Z" if only == "tower" else "petal eye H1 S+1 Z"
+		main.brew = Book.steps_of(recipe).slice(0, -1)
+		main.bottle()
+		await _frames(330)
+		var img := root.get_texture().get_image()
+		img.save_png("%s/%s.png" % [out, only])
+		print("shot ", only)
+		quit()
+		return
 	main.start_game()
 	await _frames(20)
 	await _shot("intro")
