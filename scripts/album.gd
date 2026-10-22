@@ -16,6 +16,10 @@ var _wait := 0
 
 
 func _ready() -> void:
+	# Nothing to photograph without a screen (headless runs)
+	if DisplayServer.get_name() == "headless":
+		set_process(false)
+		return
 	_studio = SubViewport.new()
 	_studio.size = Vector2i(SIZE, SIZE)
 	_studio.own_world_3d = true

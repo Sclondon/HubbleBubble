@@ -752,9 +752,9 @@ func _burst(p: CPUParticles3D, col: Color, amount := -1, speed := -1.0) -> void:
 		b.initial_velocity_min = speed * 0.6
 		b.initial_velocity_max = speed
 	b.one_shot = true
-	b.emitting = true
 	b.visible = true
 	add_child(b)
+	b.emitting = true
 	get_tree().create_timer(b.lifetime + 0.5).timeout.connect(b.queue_free)
 
 
@@ -765,8 +765,8 @@ func hold(which: int) -> Node3D:
 	var holder: Node3D = props["jar%d" % which]
 	var bit := Models.make(INGREDIENT_MODELS[which])
 	bit.scale = Vector3.ONE * 0.9
-	bit.global_position = holder.global_position + Vector3(0, 0.15, 0)
 	add_child(bit)
+	bit.global_position = holder.global_position + Vector3(0, 0.15, 0)
 	poke("jar%d" % which)
 	return bit
 

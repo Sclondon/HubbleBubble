@@ -85,6 +85,7 @@ var _discovered_now := false
 var _held: Node3D
 var _held_which := 0
 var _held_to := Vector3.ZERO
+var _held_from := Vector2.ZERO
 var _last_added := -1
 var _added_count := 0
 
@@ -618,12 +619,17 @@ func grab(which: int, at: Vector2) -> void:
 		_held.queue_free()
 	_held = hut.hold(which)
 	_held_which = which
-	_held_to = _over(at)
+	_held_from = at
+	_held_to = _held.global_position
 	Sfx.play("tap", 0.8)
 
 
 func drag_to(at: Vector2) -> void:
-	if is_instance_valid(_held):
+	# It stays put till the finger has really moved off it
+	if is_instance_valid(_held) and at.distance_to(_held_from) > 30.0:
+		_held_from = Vector2(-9999, -9999)
+		_held_to = _over(at)
+	elif is_instance_valid(_held) and _held_from.x < -9000.0:
 		_held_to = _over(at)
 
 
