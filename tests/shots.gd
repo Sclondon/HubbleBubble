@@ -45,7 +45,7 @@ func _run() -> void:
 	main.progress = 1
 	await _frames(30)
 	await _shot("brewing")
-	if only == "" or only == "witch":
+	if only == "witch":
 		var cam := main.camera
 		var keep := cam.transform
 		cam.position = main.witch.global_position + Vector3(0.9, 2.3, 2.8)

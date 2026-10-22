@@ -28,9 +28,9 @@ func _run() -> void:
 
 	# Hiccup Tonic, done right: leg, eye, warm, bottle
 	_order("Hiccup Tonic")
-	main.add(Book.ingredient("leg"))
+	await _add(Book.ingredient("leg"))
 	_check(main.progress == 1, "the right ingredient ticks the step")
-	main.add(Book.ingredient("eye"))
+	await _add(Book.ingredient("eye"))
 	_check(main.progress == 2, "and the next")
 	main.bottle()
 	_check(main.progress == 2 and main.spoil_t <= 0.0, "bottling too soon only grumbles")
@@ -45,15 +45,15 @@ func _run() -> void:
 	# Spoiling
 	await _frames(5)
 	_order("Hiccup Tonic")
-	main.add(Book.ingredient("shroom"))
+	await _add(Book.ingredient("shroom"))
 	_check(main.spoil_t > 0.0, "the wrong ingredient spoils it")
-	main.add(Book.ingredient("leg"))
+	await _add(Book.ingredient("leg"))
 	_check(main.progress == 0, "nothing can go in while it's spoilt")
 	await _seconds(1.7)
 	_check(main.spoil_t <= 0.0 and main.progress == 0, "the spoilt brew is tipped out")
 
 	# Boiling over spoils a brew that has something in it
-	main.add(Book.ingredient("leg"))
+	await _add(Book.ingredient("leg"))
 	main.heat = 99.0
 	for i in 90:
 		main.heat = maxf(main.heat, 96.0)
@@ -64,20 +64,20 @@ func _run() -> void:
 	# Night 2: stirring
 	main.night = 2
 	_order("Wobble Juice")
-	main.add(Book.ingredient("leg"))
+	await _add(Book.ingredient("leg"))
 	for i in 20:
 		main.stir(TAU / 20.0)
 	_check(main.progress == 2, "a full turn with the sun does Stir right x1 (%d)" % main.progress)
-	main.add(Book.ingredient("shroom"))
+	await _add(Book.ingredient("shroom"))
 	for i in 15:
 		main.stir(TAU / 20.0)
 	_check(main.spoil_t > 0.0, "stirring the wrong way round spoils it")
 	await _seconds(1.7)
 	_order("Wobble Juice")
-	main.add(Book.ingredient("leg"))
+	await _add(Book.ingredient("leg"))
 	for i in 20:
 		main.stir(TAU / 20.0)
-	main.add(Book.ingredient("shroom"))
+	await _add(Book.ingredient("shroom"))
 	for i in 20:
 		main.stir(-TAU / 20.0)
 	_check(main.progress == 4, "and against it does Stir left (%d)" % main.progress)
@@ -96,7 +96,7 @@ func _run() -> void:
 	# Night 3: the wand
 	main.night = 3
 	_order("Moonlight Elixir")
-	main.add(Book.ingredient("petal"))
+	await _add(Book.ingredient("petal"))
 	main.heat = 40.0
 	await _seconds(1.3)
 	main.zap()
@@ -112,7 +112,7 @@ func _run() -> void:
 	main.orders[0].steps = Book.steps_of("leg eye H1")
 	main.orders[1].steps = Book.steps_of("leg shroom")
 	main.select(0)
-	main.add(Book.ingredient("leg"))
+	await _add(Book.ingredient("leg"))
 	main.select(1)
 	_check(main.progress == 1, "a brew that suits the other order carries over")
 	main.orders[0].steps = Book.steps_of("eye wing H1")
@@ -132,8 +132,22 @@ func _run() -> void:
 	await _frames(2)
 	main.orders[0].steps = Book.steps_of("eye H2 S+1")
 	var heat0 := main.heat
-	await _touch(_centre("jar0"))
-	_check(main.progress == 1, "tapping the Eye of Newt jar adds it")
+	# Picked up off the table, carried over the pot, let go
+	var from := _centre("jar0")
+	var pot: Vector2 = main.cauldron_screen()[0]
+	_send_touch(from, true)
+	for i in 12:
+		_send_drag(from.lerp(pot, (i + 1) / 12.0))
+		await process_frame
+	await _frames(10)
+	_send_touch(pot, false)
+	await _seconds(0.6)
+	_check(main.progress == 1, "dragging the Eye of Newt into the pot adds it (%d)" % main.progress)
+	_send_touch(_centre("jar1"), true)
+	await _frames(3)
+	_send_touch(_centre("jar1"), false)
+	await _seconds(0.6)
+	_check(main.progress == 1, "letting go of one over the table puts it back")
 	await _touch(_centre("bellows"))
 	_check(main.heat > heat0, "tapping the bellows heats the fire")
 	main.heat = 60.0
@@ -142,7 +156,7 @@ func _run() -> void:
 	await _seconds(0.3)
 	var cs := main.cauldron_screen()
 	var c: Vector2 = cs[0]
-	var r: float = cs[1] * 1.1
+	var r: float = cs[1] * 0.6
 	_send_touch(c + Vector2(r, 0), true)
 	for i in 28:
 		var a := TAU * (i + 1) / 24.0
@@ -210,6 +224,11 @@ func _order(name: String) -> void:
 	main.selected = 0
 	main._reset_brew()
 	main.hut.fresh()
+
+
+func _add(which: int) -> void:
+	main.add(which)
+	await _seconds(0.6)
 
 
 func _clear_orders() -> void:

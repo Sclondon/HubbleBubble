@@ -10,6 +10,7 @@ const HOLD := 1.0
 const BOIL_AT := 92.0
 const BOIL_TIME := 1.2
 const KEY_STIR_SPEED := TAU * 1.4
+const N64_LINES := 270.0
 
 ## "title", "intro", "play", "done", "over"
 var state := "title"
@@ -42,7 +43,10 @@ var testing := false
 
 var camera: Camera3D
 var hut: Hut
-var witch: Witch
+## The 3D, drawn small in here and blown up soft (the N64 filter), or full size with it off
+var view: SubViewport
+var screen: TextureRect
+var n64 := true
 var hud: Hud
 var sfx: Sfx
 
@@ -60,6 +64,11 @@ var _tick := 0
 var _next_order_id := 0
 var _last_kind := ""
 var _keys_down := {}
+var _held: Node3D
+var _held_which := 0
+var _held_to := Vector3.ZERO
+var _last_added := -1
+var _added_count := 0
 
 
 func _ready() -> void:
@@ -67,20 +76,31 @@ func _ready() -> void:
 	sfx = Sfx.new()
 	sfx.name = "sfx"
 	add_child(sfx)
+	view = SubViewport.new()
+	view.name = "view"
+	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	view.msaa_3d = Viewport.MSAA_DISABLED
+	add_child(view)
+	var under := CanvasLayer.new()
+	under.layer = -1
+	add_child(under)
+	screen = TextureRect.new()
+	screen.name = "screen"
+	screen.texture = view.get_texture()
+	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	screen.stretch_mode = TextureRect.STRETCH_SCALE
+	screen.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.material = ShaderMaterial.new()
+	(screen.material as ShaderMaterial).shader = preload("res://shaders/n64.gdshader")
+	under.add_child(screen)
 	hut = Hut.new()
 	hut.name = "hut"
-	add_child(hut)
-	witch = Witch.make("witch_grumblewart", true)
-	witch.name = "witch"
-	witch.position = Vector3(-0.95, 0, -0.85)
-	witch.rotation.y = 0.45
-	witch.brew = Hut.BREW_LEVEL
-	witch.stick = hut.stick
-	add_child(witch)
+	view.add_child(hut)
 	camera = Camera3D.new()
 	camera.name = "camera"
 	camera.current = true
-	add_child(camera)
+	view.add_child(camera)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	hud = Hud.new()
@@ -95,26 +115,37 @@ func _ready() -> void:
 
 func _frame() -> void:
 	var s := get_viewport().get_visible_rect().size
+	# The N64 filter: the 3D is drawn this many lines on its short side, then blown up soft
+	var k := (N64_LINES / minf(s.x, s.y)) if n64 else 1.0
+	view.size = Vector2i(maxi(2, roundi(s.x * k)), maxi(2, roundi(s.y * k)))
+	(screen.material as ShaderMaterial).set_shader_parameter("amount", 1.0 if n64 else 0.0)
+	(screen.material as ShaderMaterial).set_shader_parameter("size", Vector2(view.size))
 	var tall := s.y > s.x * 1.1
 	if tall:
-		# Phone: the 3D sits between the tickets and the controls, so it is framed by width
+		# Phone: framed by width; you look down over the pot at the table and the window
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
-		camera.fov = 54.0
-		# Close in and looking well down, so the window, the pot and the stepped table stack up the screen
+		camera.fov = 45.0
 		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.5, 0.6)
-		camera.position = Vector3(0.25, 3.05 + spare * 0.5, 4.5 + spare * 0.4)
-		camera.look_at(Vector3(0.25, 0.78, -0.5))
+		camera.position = Vector3(0, 3.35 + spare * 0.5, 2.05 + spare * 0.4)
+		camera.look_at(Vector3(0, 1.1, -1.25))
 	else:
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.fov = 50.0
-		camera.position = Vector3(0.25, 3.4, 6.0)
-		camera.look_at(Vector3(0.25, 1.32, -0.1))
+		camera.position = Vector3(0, 3.7, 4.6)
+		camera.look_at(Vector3(0, 1.25, -1.2))
 	if hud != null:
 		hud.layout()
 
 
+func set_n64(on: bool) -> void:
+	n64 = on
+	_frame()
+	_save()
+
+
 func screen_of(p: Vector3) -> Vector2:
-	return camera.unproject_position(p)
+	# The camera's picture is the view's size; the screen shows it stretched over the whole window
+	return camera.unproject_position(p) * (get_viewport().get_visible_rect().size / Vector2(view.size))
 
 
 ## What in the hut is under a point on the screen ("jar3", "bellows", "stir"...), or ""
@@ -140,14 +171,6 @@ func spot_screen(id: String) -> Vector2:
 
 ## Something in the hut tapped
 func tap(id: String) -> void:
-	if id.begins_with("jar"):
-		var which := int(id.substr(3))
-		if which < Book.ingredients_on(night):
-			add(which)
-		else:
-			hut.poke(id, true)
-			Sfx.play("huff", 1.5, -8.0)
-		return
 	match id:
 		"bellows":
 			pump()
@@ -252,12 +275,10 @@ func _close_shop() -> void:
 	if night_coins >= Book.quota(night):
 		state = "done"
 		Sfx.play("win")
-		witch.act("cheer")
 		_say_witch(Book.rhyme("night_done"))
 	else:
 		state = "over"
 		Sfx.play("lose")
-		witch.act("grumble")
 		_say_witch(Book.rhyme("game_over"))
 		if score > best and not testing:
 			best = score
@@ -313,6 +334,8 @@ func _clear_customers() -> void:
 
 func _process(dt: float) -> void:
 	_update_speech(dt)
+	if is_instance_valid(_held):
+		hut.carry(_held, _held_to, dt)
 	for f in floaters:
 		f.t += dt
 	floaters = floaters.filter(func(f: Dictionary) -> bool: return f.t < 1.4)
@@ -324,8 +347,6 @@ func _process(dt: float) -> void:
 		_play(dt)
 	else:
 		heat = move_toward(heat, 30.0 if state == "title" else 12.0, dt * 5.0)
-		if state == "title" and randf() < dt * 0.15:
-			witch.act("cackle")
 	hut.heat = heat
 	_bubble_t -= dt
 	if _bubble_t < 0.0 and state != "title":
@@ -376,7 +397,6 @@ func _play(dt: float) -> void:
 			_boil = 0.0
 			heat = 62.0
 			Sfx.play("hiss")
-			witch.act("shock")
 			if progress > 0:
 				_spoil(Book.rhyme("boil"))
 			else:
@@ -400,20 +420,14 @@ func _play(dt: float) -> void:
 	_stir_wrong = maxf(0.0, _stir_wrong - dt * 0.6)
 	_stir_stray = maxf(0.0, _stir_stray - dt * 0.6)
 	_stir_seen = maxf(0.0, _stir_seen - dt)
-	witch.stirring = _stir_seen > 0.0
+	hut.stirring = _stir_seen > 0.0
 
 
 func _eyes() -> void:
+	# The customer looks at you (just over the pot)
 	var o := selected_order()
 	if not o.is_empty() and is_instance_valid(o.customer):
-		witch.look_at_point = Hut.WINDOW_HEAD if speech.get("who", "") != "witch" else camera.global_position
-		o.customer.look_at_point = witch.global_position + Vector3(0, 2.0, 0)
-	elif state == "play":
-		witch.look_at_point = Vector3(0, Hut.BREW_LEVEL, 0)
-	else:
-		witch.look_at_point = camera.global_position
-	if witch.stirring:
-		witch.look_at_point = Vector3(0, Hut.BREW_LEVEL, 0.3)
+		o.customer.look_at_point = camera.global_position + Vector3(0, -0.6, 0)
 
 
 func selected_order() -> Dictionary:
@@ -463,7 +477,7 @@ func _new_order() -> void:
 	customer.add_to_group("customer")
 	customer.position = Hut.WINDOW_SPOT
 	customer.scale = Vector3.ONE * 1.05
-	add_child(customer)
+	view.add_child(customer)
 	_next_order_id += 1
 	var o := {"id": _next_order_id, "potion": potion, "steps": steps, "patience": full, "full": full,
 			"customer": customer, "who": who, "colour": Book.colour_of(Book.POTIONS[potion].recipe), "born": clock}
@@ -545,13 +559,75 @@ func _remove_order(i: int) -> void:
 
 # --- what she does at the cauldron ---
 
+## A key (or anything not dragged): it's thrown in from the table
 func add(which: int) -> void:
 	if not _brewing() or which >= Book.ingredients_on(night):
 		return
-	witch.act("toss")
 	hut.poke("jar%d" % which)
-	hut.plop(Book.INGREDIENTS[which].brew)
+	hut.toss(which, _land)
+
+
+## Picks an ingredient up off the table, to carry over to the pot
+func grab(which: int, at: Vector2) -> void:
+	if not _brewing() or which >= Book.ingredients_on(night):
+		hut.poke("jar%d" % which, true)
+		Sfx.play("huff", 1.5, -8.0)
+		return
+	if is_instance_valid(_held):
+		_held.queue_free()
+	_held = hut.hold(which)
+	_held_which = which
+	_held_to = _over(at)
+	Sfx.play("tap", 0.8)
+
+
+func drag_to(at: Vector2) -> void:
+	if is_instance_valid(_held):
+		_held_to = _over(at)
+
+
+## Lets go of what's held: into the pot, or back to the table
+func release() -> void:
+	if not is_instance_valid(_held):
+		return
+	var bit := _held
+	_held = null
+	if hut.over_pot(bit.global_position) and _brewing():
+		hut.drop(bit, _held_which, _land)
+	else:
+		hut.drop(bit, _held_which, _land)
+		if not hut.over_pot(bit.global_position):
+			_float("Drop it in the pot!", screen_of(bit.global_position), Color("ffe8a0"))
+
+
+## Where a finger on the screen is, out over the pot at the height things are carried
+func _over(at: Vector2) -> Vector3:
+	var p := at * (Vector2(view.size) / get_viewport().get_visible_rect().size)
+	var from := camera.project_ray_origin(p)
+	var dir := camera.project_ray_normal(p)
+	var height := Hut.CAULDRON_RIM + 0.45
+	if absf(dir.y) < 0.001:
+		return from
+	var t := (height - from.y) / dir.y
+	return from + dir * maxf(t, 0.0)
+
+
+## Something landed in the brew: it does its thing (more, the fuller the pot), and counts as a step
+func _land(which: int, at: Vector3) -> void:
+	if not _brewing():
+		return
+	var ing: Dictionary = Book.INGREDIENTS[which]
+	var fx: String = ing.fx
+	var c := Book.combo(_last_added, which) if _last_added >= 0 else []
+	var strength := 1.0 + 0.3 * _added_count
+	if not c.is_empty():
+		fx = c[2]
+		_float(c[3], screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.8, 0)), Color("ffe060"), true)
+		Sfx.play("zap", 0.7, -4.0)
+	hut.react(fx, ing.brew, strength, at)
 	Sfx.play("plop", randf_range(0.9, 1.15))
+	_last_added = which
+	_added_count += 1
 	_act({"kind": Book.ADD, "what": which})
 
 
@@ -567,9 +643,7 @@ func pump() -> void:
 func zap() -> void:
 	if not _brewing() or night < 3:
 		return
-	witch.act("zap")
-	hut.poke("wand")
-	hut.zap()
+	hut.wave_wand()
 	Sfx.play("zap")
 	_act({"kind": Book.ZAP})
 
@@ -593,7 +667,7 @@ func stir(angle: float) -> void:
 	if not _brewing() or night < 2 or absf(angle) < 0.0001:
 		return
 	_stir_angle += angle
-	witch.stir_angle = _stir_angle
+	hut.stir_angle = _stir_angle
 	_stir_seen = 0.25
 	hut.stir_to(_stir_angle)
 	_stir_sound += absf(angle)
@@ -675,7 +749,6 @@ func _spoil(rhyme: String, short := "") -> void:
 	hut.set_brew(Color("6a5a3a"), true)
 	hut.poof()
 	Sfx.play("blorp")
-	witch.act("grumble")
 	_say_witch(rhyme)
 	if short != "":
 		_float(short, screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ff9a8a"))
@@ -683,6 +756,8 @@ func _spoil(rhyme: String, short := "") -> void:
 
 func _reset_brew() -> void:
 	progress = 0
+	_last_added = -1
+	_added_count = 0
 	_hold = 0.0
 	_stir_done = 0.0
 	_stir_wrong = 0.0
@@ -707,7 +782,6 @@ func _serve() -> void:
 	Sfx.play("cork")
 	Sfx.play("coins", 1.0, -2.0)
 	Sfx.play("cheer", 1.0, -4.0)
-	witch.act("cackle")
 	var at := screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.2, 0.3))
 	_float("+%d" % coins, at, Color("ffe060"), true)
 	if combo > 1:
@@ -726,7 +800,7 @@ func _fly_bottle(col: Color, customer: Witch) -> void:
 	var liquid := Shape.mat(0.35)
 	liquid.set_shader_parameter("tint", Shape.lin3(col))
 	b.add_child(Models.make("potion_liquid", liquid))
-	add_child(b)
+	view.add_child(b)
 	var from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)
 	var to := Hut.WINDOW_HEAD + Vector3(0.2, -0.45, 0.45)
 	var tw := create_tween()
@@ -753,7 +827,6 @@ func _say_folk(text: String, voice: float, customer: Witch) -> void:
 
 func _update_speech(dt: float) -> void:
 	if speech.is_empty():
-		witch.talking = false
 		return
 	var before := int(speech.shown)
 	speech.shown = minf(speech.text.length(), speech.shown + dt * 38.0)
@@ -763,7 +836,6 @@ func _update_speech(dt: float) -> void:
 		var ch: String = speech.text[k]
 		if k % 3 == 0 and ch != " " and ch != "\n":
 			Sfx.say("witch" if speech.who == "witch" else "folk", speech.voice)
-	witch.talking = talking and speech.who == "witch"
 	var c: Variant = speech.get("customer")
 	if c != null and is_instance_valid(c):
 		(c as Witch).talking = talking
@@ -828,6 +900,7 @@ func _load() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(save_path) == OK:
 		best = cfg.get_value("shop", "best", 0)
+		n64 = cfg.get_value("shop", "n64", true)
 		Sfx.set_muted(not cfg.get_value("shop", "sound", true))
 
 
@@ -835,4 +908,5 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("shop", "best", best)
 	cfg.set_value("shop", "sound", not sfx.muted)
+	cfg.set_value("shop", "n64", n64)
 	cfg.save(save_path)

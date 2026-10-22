@@ -95,7 +95,7 @@ func layout() -> void:
 		for i in 3:
 			_tickets.append(Rect2(10 + i * (tw + 10), 80, tw, 150))
 		_strip = Rect2(10, h - 132, w - 20, 118)
-		_gauge = Rect2(w - 50, 290, 36, h * 0.3)
+		_gauge = Rect2(w - 40, 290, 28, h * 0.26)
 	else:
 		for i in 3:
 			_tickets.append(Rect2(12, 84 + i * 160, 320, 150))
@@ -113,6 +113,8 @@ func _input(event: InputEvent) -> void:
 		if e.pressed:
 			_press(e.index, e.position)
 		else:
+			if _touches.get(e.index, {}).get("id", "") == "hold":
+				shop.release()
 			_touches.erase(e.index)
 			_held_pump.erase(e.index)
 		get_viewport().set_input_as_handled()
@@ -127,7 +129,9 @@ func _input(event: InputEvent) -> void:
 			if not on_button:
 				_touches[e.index] = {"id": "stir", "last": e.position}
 		var t: Dictionary = _touches.get(e.index, {})
-		if t.get("id", "") == "stir":
+		if t.get("id", "") == "hold":
+			shop.drag_to(e.position)
+		elif t.get("id", "") == "stir":
 			var cs := shop.cauldron_screen()
 			var c: Vector2 = cs[0]
 			var a0: float = (t.last - c).angle()
@@ -162,6 +166,8 @@ func _press(index: int, at: Vector2) -> void:
 			shop.toggle_pause()
 		elif _hit("sound", at):
 			shop.set_sound(Sfx.me.muted)
+		elif _hit("n64", at):
+			shop.set_n64(not shop.n64)
 		elif _hit("quit", at):
 			shop.quit_to_title()
 		return
@@ -169,7 +175,7 @@ func _press(index: int, at: Vector2) -> void:
 		shop.toggle_book()
 		return
 	for id: String in buttons:
-		if id in ["resume", "sound", "quit"] or not _hit(id, at):
+		if id in ["resume", "sound", "n64", "quit"] or not _hit(id, at):
 			continue
 		_touches[index] = {"id": id, "last": at}
 		if id.begins_with("ticket"):
@@ -183,6 +189,10 @@ func _press(index: int, at: Vector2) -> void:
 		_touches[index] = {"id": "stir", "last": at}
 		return
 	_touches[index] = {"id": thing, "last": at}
+	if thing.begins_with("jar"):
+		_touches[index].id = "hold"
+		shop.grab(int(thing.substr(3)), at)
+		return
 	shop.tap(thing)
 	if thing == "bellows":
 		_held_pump[index] = HOLD_PUMP * 1.6
@@ -473,7 +483,7 @@ func _draw_speech() -> void:
 	bw += 40
 	var anchor: Vector2
 	if sp.who == "witch":
-		anchor = shop.screen_of(shop.witch.global_position + Vector3(0.3, 3.4, 0))
+		anchor = shop.screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.5, 0.6))
 	else:
 		anchor = shop.screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.9, 0))
 	var top_limit := 270.0 if tall else 84.0
@@ -482,6 +492,11 @@ func _draw_speech() -> void:
 	if shop.state == "title":
 		box.position.y = anchor.y - bh - 30
 		top_limit = size_now.y * 0.36
+	elif sp.who == "witch" and tall:
+		# Your own words, down by the recipe, clear of the brew
+		box.position.y = _strip.position.y - bh - 18
+		top_limit = 0.0
+		low_limit = size_now.y
 	box.position.x = clampf(box.position.x, 12, size_now.x - bw - 12)
 	box.position.y = clampf(box.position.y, top_limit, low_limit - bh)
 	var tail_to := Vector2(clampf(anchor.x, box.position.x + 30, box.end.x - 30), box.end.y + 30)
@@ -501,7 +516,7 @@ func _draw_speech() -> void:
 		_text(part, Vector2(box.position.x + 20, y), fs, Color("3a1a4a") if sp.who == "witch" else Color("1a2a4a"), 0, HORIZONTAL_ALIGNMENT_LEFT)
 		y += fs * 1.12
 	if sp.who == "witch":
-		_text("Grumblewart", Vector2(box.position.x + 18, box.position.y - 2), 20, Color("a8e870"), 6, HORIZONTAL_ALIGNMENT_LEFT)
+		_text("You (Grumblewart)", Vector2(box.position.x + 18, box.position.y - 2), 20, Color("a8e870"), 6, HORIZONTAL_ALIGNMENT_LEFT)
 
 
 func _draw_floaters() -> void:
@@ -528,7 +543,10 @@ func _draw_hint() -> void:
 	var target := Vector2.ZERO
 	match want.kind:
 		Book.ADD:
-			target = shop.spot_screen("jar%d" % want.what)
+			var from := shop.spot_screen("jar%d" % want.what)
+			var to: Vector2 = shop.cauldron_screen()[0]
+			var k := fmod(_t * 0.8, 1.0)
+			target = from.lerp(to, smoothstep(0.15, 0.85, k))
 		Book.HEAT:
 			if Book.band_of(shop.heat) < want.level:
 				target = shop.spot_screen("bellows")
@@ -637,16 +655,16 @@ func _draw_summary() -> void:
 
 func _draw_pause() -> void:
 	var w := size_now.x
-	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.28, minf(520, w * 0.84), 470)
+	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 560)
 	_card(r)
 	_text("PAUSED", Vector2(r.get_center().x, r.position.y + 56), 56, GOLD, 12)
 	var bw := r.size.x - 80
-	var ids := ["resume", "sound", "quit"]
-	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on"), "Back to the title"]
-	for i in 3:
+	var ids := ["resume", "sound", "n64", "quit"]
+	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on"), "N64 filter: %s" % ("on" if shop.n64 else "off"), "Back to the title"]
+	for i in 4:
 		var br := Rect2(r.position.x + 40, r.position.y + 110 + i * 92, bw, 74)
 		buttons[ids[i]] = {"rect": br}
-		_box(br, [GREEN, Color("8ab8e8"), Color("e8a090")][i], INK, 4, 20)
+		_box(br, [GREEN, Color("8ab8e8"), Color("c8a0f0"), Color("e8a090")][i], INK, 4, 20)
 		_text(labels[i], br.get_center(), 32, Color.WHITE, 8)
 	_text("Keys: 1-8 ingredients, Space heat, A/D or arrows stir,\nZ zap, Enter bottle, Tab next order, R book", Vector2(r.get_center().x, r.end.y - 40), 18, Color("6a4a3a"), 0)
 

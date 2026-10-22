@@ -5,17 +5,37 @@ class_name Book
 enum { ADD, HEAT, STIR, ZAP, BOTTLE }
 
 const INGREDIENTS := [
-	{"id": "eye", "name": "Eye of Newt", "brew": Color("5fd6c4"), "key": "1"},
-	{"id": "shroom", "name": "Toadstool", "brew": Color("e8473a"), "key": "2"},
-	{"id": "wing", "name": "Bat Wing", "brew": Color("8a52c9"), "key": "3"},
-	{"id": "leg", "name": "Frog Leg", "brew": Color("86d84a"), "key": "4"},
-	{"id": "spider", "name": "Spider", "brew": Color("3b3a8c"), "key": "5"},
-	{"id": "petal", "name": "Moon Petal", "brew": Color("a8c8ff"), "key": "6"},
-	{"id": "pepper", "name": "Ghost Pepper", "brew": Color("ffc4e4"), "key": "7"},
-	{"id": "scale", "name": "Dragon Scale", "brew": Color("ffa22e"), "key": "8"},
+	{"id": "eye", "name": "Eye of Newt", "brew": Color("5fd6c4"), "key": "1", "fx": "bubbles"},
+	{"id": "shroom", "name": "Toadstool", "brew": Color("e8473a"), "key": "2", "fx": "spores"},
+	{"id": "wing", "name": "Bat Wing", "brew": Color("8a52c9"), "key": "3", "fx": "smoke"},
+	{"id": "leg", "name": "Frog Leg", "brew": Color("86d84a"), "key": "4", "fx": "splash"},
+	{"id": "spider", "name": "Spider", "brew": Color("3b3a8c"), "key": "5", "fx": "dark"},
+	{"id": "petal", "name": "Moon Petal", "brew": Color("a8c8ff"), "key": "6", "fx": "sparkle"},
+	{"id": "pepper", "name": "Ghost Pepper", "brew": Color("ffc4e4"), "key": "7", "fx": "ghost"},
+	{"id": "scale", "name": "Dragon Scale", "brew": Color("ffa22e"), "key": "8", "fx": "fire"},
 ]
 
 const WATER := Color("4a9a8a")
+
+## What two ingredients do when one goes in on top of the other: [first, second, effect, its name]
+const COMBOS := [
+	["scale", "pepper", "fireball", "Fireball!"],
+	["pepper", "scale", "fireball", "Fireball!"],
+	["petal", "eye", "rainbow", "Rainbow!"],
+	["eye", "petal", "rainbow", "Rainbow!"],
+	["leg", "leg", "geyser", "Geyser!"],
+	["shroom", "leg", "stink", "Phew!"],
+	["leg", "shroom", "stink", "Phew!"],
+	["spider", "wing", "smoke", "Batty!"],
+	["wing", "spider", "dark", "Creepy!"],
+]
+
+
+static func combo(first: int, second: int) -> Array:
+	for c: Array in COMBOS:
+		if INGREDIENTS[first].id == c[0] and INGREDIENTS[second].id == c[1]:
+			return c
+	return []
 
 ## Heat bands, 0 to 100
 const HEAT_NAMES := ["COLD", "WARM", "HOT", "ROARING"]
