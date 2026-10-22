@@ -37,6 +37,8 @@ var floaters: Array[Dictionary] = []
 var intro_t := 0.0
 var news := ""
 var show_intro := true
+## Set by tests: never save a best or report a score
+var testing := false
 
 var camera: Camera3D
 var hut: Hut
@@ -208,11 +210,11 @@ func _close_shop() -> void:
 		Sfx.play("lose")
 		witch.act("grumble")
 		_say_witch(Book.rhyme("game_over"))
-		if score > best:
+		if score > best and not testing:
 			best = score
 			_save()
 		# Hand the score to the hosting page (the Scareathon arcade cabinet) for its leaderboard
-		if OS.has_feature("web"):
+		if OS.has_feature("web") and score > 0 and not testing:
 			JavaScriptBridge.eval("window.parent.postMessage({ type: 'PLAYER_DIED', score: %d }, '*')" % score, true)
 	intro_t = 0.0
 

@@ -132,6 +132,14 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag:
 		var e := event as InputEventScreenDrag
+		# Some iPhones never send the finger going down: a drag from a finger not seen yet takes it up
+		if not _touches.has(e.index) and shop.state == "play" and not shop.paused and not shop.book_open:
+			var on_button := false
+			for id: String in buttons:
+				if _hit(id, e.position):
+					on_button = true
+			if not on_button:
+				_touches[e.index] = {"id": "stir", "last": e.position}
 		var t: Dictionary = _touches.get(e.index, {})
 		if t.get("id", "") == "stir":
 			var cs := shop.cauldron_screen()

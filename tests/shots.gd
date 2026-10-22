@@ -22,6 +22,7 @@ func _initialize() -> void:
 	DisplayServer.window_set_size(size)
 	root.size = size
 	main = load("res://main.tscn").instantiate()
+	main.testing = true
 	root.add_child(main)
 	_run.call_deferred()
 

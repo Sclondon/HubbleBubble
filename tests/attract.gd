@@ -23,6 +23,7 @@ func _initialize() -> void:
 			shots = a.substr(8)
 	main = load("res://main.tscn").instantiate()
 	main.save_path = "user://attract.cfg"
+	main.testing = true
 	root.add_child(main)
 	process_frame.connect(_tick)
 	_start.call_deferred()

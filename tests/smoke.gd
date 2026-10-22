@@ -11,6 +11,7 @@ var failures := 0
 func _initialize() -> void:
 	main = load("res://main.tscn").instantiate()
 	main.save_path = "user://smoke.cfg"
+	main.testing = true
 	root.add_child(main)
 	_run.call_deferred()
 
