@@ -278,22 +278,22 @@ GRUMBLEWART = dict(
 
 CUSTOMERS = [
     dict(name="witch_hattie", skin="#ffcfaa", dress="#3a9a5a", trim="#22603a", hat="#2a6a3a", band="#e8473a",
-         hair="#ff7a2a", eyes=1.15, nose="button", chin=0.3, height=0.82, girth=0.85, hunch=0.0, hat_height=0.7,
+         hair="#ff7a2a", eyes=1.15, nose="button", chin=0.4, iris="#5ac84a", height=0.82, girth=0.85, hunch=0.0, hat_height=0.7,
          hat_bend=0.25, hair_style="pigtails", freckles=True, brim=0.52, flower="#ffd84a", ears=0.6),
     dict(name="witch_gristle", skin="#a9b49a", dress="#5a4a6a", trim="#3a2c48", hat="#4a3a2a", band="#8a6a4a",
-         hair="#f2f0e8", eyes=0.85, nose="long", chin=1.2, height=0.92, girth=0.95, hunch=0.35, hat_height=0.8,
+         hair="#f2f0e8", eyes=0.85, nose="long", chin=1.4, iris="#e8e040", height=0.92, girth=0.95, hunch=0.35, hat_height=0.8,
          hat_bend=0.9, hair_style="wild", shawl="#7a5a8a", brim=0.6, warts=3, ears=1.1),
-    dict(name="witch_bella", skin="#7ab0f0", dress="#2a2a6a", trim="#141440", hat="#1a1a3a", band="#a8c8ff",
-         hair="#1a1a28", eyes=1.0, nose="pointy", chin=0.9, height=1.12, girth=0.78, hunch=0.0, hat_height=1.35,
-         hat_bend=0.15, hair_style="long", stars=True, brim=0.58, ears=1.0),
+    dict(name="witch_bella", skin="#9ad84a", dress="#1c1a30", trim="#0a0a16", hat="#1a2450", band="#ff4aa8",
+         hair="#ff4aa8", eyes=1.0, nose="long", chin=1.3, height=1.18, girth=0.7, hunch=0.0, hat_height=1.2,
+         hat_bend=0.2, hair_style="bob", stars=True, brim=0.72, ears=1.0, iris="#ff9a2a"),
     dict(name="witch_bogwort", skin="#7a9a4a", dress="#5a6a32", trim="#38441e", hat="#3a5a32", band="#8a5a2a",
          hair="#3a5a2a", eyes=0.95, nose="bulb", chin=0.6, height=0.95, girth=1.4, hunch=0.1, hat_height=0.85,
-         hat_bend=0.5, hair_style="wild", toadstool=True, brim=0.7, warts=2, ears=0.9),
+         hat_bend=0.5, hair_style="bun", toadstool=True, brim=0.7, warts=2, ears=0.9),
     dict(name="witch_polly", skin="#c8a8f0", dress="#e8701a", trim="#9a3a10", hat="#ff8a1a", band="#3a8a2a",
-         hair="#d8302a", eyes=1.1, nose="pointy", chin=0.7, height=0.98, girth=1.05, hunch=0.0, hat_height=0.95,
+         hair="#d8302a", eyes=1.1, nose="pointy", chin=0.9, iris="#ffd040", height=0.98, girth=1.05, hunch=0.0, hat_height=0.95,
          hat_bend=0.6, hair_style="bob", brim=0.6, ears=0.9),
     dict(name="witch_esme", skin="#eceaff", dress="#f2f2ff", trim="#b8bce8", hat="#c8c8e8", band="#8a7ac8",
-         hair="#b8c8ff", eyes=1.05, nose="hook", chin=0.8, height=1.02, girth=0.9, hunch=0.0, hat_height=1.0,
+         hair="#b8c8ff", eyes=1.05, nose="hook", chin=0.9, iris="#7ad0ff", height=1.02, girth=0.9, hunch=0.0, hat_height=1.0,
          hat_bend=0.35, hair_style="long", ragged=True, brim=0.6, ears=1.0),
 ]
 
@@ -423,140 +423,183 @@ def build_witch(spec):
         group(sleeve, nearest({"upper." + side: (s, e), "fore." + side: (e, w)}))
         parts += [arm, sleeve]
 
-    # The head: an egg drawn down into a chin, cheeks pushed out
+    # The head, the way the old console witches had it: long, drawn down into a chin that juts
+    # forward, cheekbones, the crown all hair (no bald pates under the hats)
     chin = spec["chin"]
+    hair_col = spec["hair"]
 
     def head_shape(v):
-        front = max(0.0, -v.y / head_r.y)
         low = max(0.0, -v.z / head_r.z)
+        high = max(0.0, v.z / head_r.z)
+        front = max(0.0, -v.y / head_r.y)
         v = v.copy()
-        # The jaw narrows and juts forward and down into a point
-        k = 1.0 - 0.35 * low ** 1.4 * chin
-        v.x *= k
-        v.y -= 0.12 * chin * low ** 2 * (0.4 + front)
-        v.z -= 0.08 * chin * low ** 3
+        k = 1.0 - 0.55 * low ** 1.25 * min(chin, 1.2)
+        v.x *= k * (1.0 + 0.08 * front * (1.0 - low))
+        v.y -= (0.1 + 0.32 * chin) * low ** 2 * (0.3 + front)
+        v.z -= 0.2 * chin * low ** 2.2
+        v.y += 0.04 * high
         return v
-    head = egg("head", head_c, head_r, seg=20, rings=14, sub=1, shape=head_shape)
+    head = egg("head", head_c, head_r, seg=16, rings=12, sub=1, shape=head_shape)
     skin = spec["skin"]
-    paint(head, lit(plain(skin, shade(skin, -0.2), head_c.z - 0.4, head_c.z + 0.3), 0.3))
+    crown_z = head_c.z + 0.1 * F
+
+    def head_col(co, n):
+        # Hair over the crown and round the back; skin on the face
+        if co.z > crown_z or (co.y > head_c.y + 0.05 and co.z > head_c.z - 0.2):
+            return lin(hair_col) * (0.75 + 0.25 * max(0.0, n.z))
+        return lin(skin).lerp(lin(skin) * 0.7, max(0.0, -n.z) * 0.6) * (0.85 + 0.15 * max(0.0, -n.y))
+    paint(head, head_col)
     parts.append(head)
     head_parts = []
-    # The nose
+    # The nose: long, the hook kind longest of all
     nose = spec["nose"]
-    nb = head_c + F * Vector((0, -0.26, 0.02))
+    nb = head_c + F * Vector((0, -0.27, 0.0))
     if nose == "hook":
-        np = [nb, nb + Vector((0, -0.18, 0.0)), nb + Vector((0, -0.31, -0.07)), nb + Vector((0, -0.33, -0.17))]
-        nr = [0.075, 0.06, 0.045, 0.028]
+        np = [nb, nb + Vector((0, -0.2, 0.01)), nb + Vector((0, -0.38, -0.06)), nb + Vector((0, -0.44, -0.18))]
+        nr = [0.07, 0.055, 0.035, 0.012]
     elif nose == "long":
-        np = [nb, nb + Vector((0, -0.2, -0.03)), nb + Vector((0.02, -0.38, -0.1)), nb + Vector((0.04, -0.44, -0.2))]
-        nr = [0.075, 0.055, 0.04, 0.025]
+        np = [nb, nb + Vector((0, -0.24, -0.04)), nb + Vector((0.02, -0.46, -0.12)), nb + Vector((0.04, -0.56, -0.2))]
+        nr = [0.07, 0.05, 0.032, 0.008]
     elif nose == "pointy":
-        np = [nb, nb + Vector((0, -0.16, -0.02)), nb + Vector((0, -0.28, 0.0))]
-        nr = [0.07, 0.04, 0.012]
+        np = [nb, nb + Vector((0, -0.2, -0.04)), nb + Vector((0, -0.36, -0.06))]
+        nr = [0.065, 0.038, 0.006]
     elif nose == "bulb":
-        np = [nb, nb + Vector((0, -0.1, -0.03)), nb + Vector((0, -0.16, -0.06))]
+        np = [nb, nb + Vector((0, -0.12, -0.04)), nb + Vector((0, -0.19, -0.08))]
         nr = [0.07, 0.08, 0.09]
     else:
-        np = [nb + Vector((0, 0.02, -0.03)), nb + Vector((0, -0.05, -0.05))]
-        nr = [0.05, 0.055]
-    nose_ob = grow("nose", np, [(i, i + 1) for i in range(len(np) - 1)], nr, sub=2)
-    paint(nose_ob, lit(plain(shade(skin, 0.06), skin)))
+        np = [nb + Vector((0, 0.02, -0.04)), nb + Vector((0, -0.07, -0.06))]
+        nr = [0.05, 0.05]
+    nose_ob = grow("nose", np, [(i, i + 1) for i in range(len(np) - 1)], nr, sub=1)
+    paint(nose_ob, lit(plain(skin)))
     head_parts.append(nose_ob)
     for k in range(spec.get("warts", 1 if nose == "hook" else 0)):
         p = np[min(len(np) - 1, 1 + k % (len(np) - 1))]
-        wart = egg("wart", p + Vector((0.04 if k % 2 == 0 else -0.04, -0.01, 0.02)), (0.028, 0.028, 0.028), seg=8, rings=6, sub=1)
+        wart = egg("wart", p + Vector((0.035 if k % 2 == 0 else -0.035, -0.01, 0.02)), (0.026, 0.026, 0.026), seg=8, rings=6, sub=0)
         paint(wart, lambda co, n: lin("#9a7a3a"))
         head_parts.append(wart)
     # Pointed ears
     for sgn in (1, -1):
-        e0 = head_c + F * Vector((sgn * 0.27, 0.02, 0.0))
+        e0 = head_c + F * Vector((sgn * 0.26, 0.02, 0.02))
         ear = grow("ear", [e0, e0 + Vector((sgn * 0.14, 0.03, 0.06)) * spec["ears"], e0 + Vector((sgn * 0.24, 0.06, 0.14)) * spec["ears"]],
-                   [(0, 1), (1, 2)], [(0.07, 0.025), (0.05, 0.018), (0.01, 0.006)], sub=1)
+                   [(0, 1), (1, 2)], [(0.065, 0.022), (0.045, 0.016), (0.01, 0.006)], sub=1)
         paint(ear, lit(plain(skin)))
         head_parts.append(ear)
-    # Cheeks, freckles
-    for sgn in (1, -1):
-        ch = egg("cheek", head_c + F * Vector((sgn * 0.17, -0.22, -0.07)), (0.07, 0.04, 0.05), seg=10, rings=6, sub=1)
-        paint(ch, lambda co, n, s=skin: lin(s).lerp(lin("#ff8a8a"), 0.3))
-        head_parts.append(ch)
         if spec.get("freckles"):
             for k in range(4):
-                f = egg("freckle", head_c + F * Vector((sgn * (0.12 + k % 2 * 0.06), -0.265 + k * 0.004, -0.02 - k * 0.025)),
+                f = egg("freckle", head_c + F * Vector((sgn * (0.11 + k % 2 * 0.05), -0.27, -0.06 - k * 0.022)),
                         (0.012, 0.006, 0.012), seg=6, rings=4, sub=0)
                 paint(f, lambda co, n: lin("#c86a3a"))
                 head_parts.append(f)
-    # Brows, mean and bushy, on bones of their own
+    # Brows, thick and cross, on bones of their own
     brows = []
     for side, sgn in (("L", 1), ("R", -1)):
-        bc = head_c + F * Vector((sgn * 0.13, -0.24, 0.33))
-        brow = grow("brow_" + side, [bc - Vector((sgn * 0.08, -0.02, -0.02)), bc + Vector((sgn * 0.07, 0.03, 0.01))], [(0, 1)],
-                    [(0.035, 0.022), (0.022, 0.015)], sub=1)
-        paint(brow, lambda co, n: lin(spec["hair"]) * 0.7)
+        bc = head_c + F * Vector((sgn * 0.13, -0.24, 0.17))
+        brow = grow("brow_" + side, [bc + Vector((-sgn * 0.08, -0.02, -0.03)), bc + Vector((sgn * 0.07, 0.02, 0.03))], [(0, 1)],
+                    [(0.03, 0.02), (0.018, 0.012)], sub=1)
+        paint(brow, lambda co, n: lin(hair_col) * 0.6)
         group(brow, rigid("brow." + side))
         brows.append(brow)
-    # The mouth, a dark slot she talks with, and maybe a tooth
-    mouth_c = head_c + F * Vector((0, -0.25 - 0.04 * chin, -0.12 - 0.02 * chin))
-    mouth = egg("mouth", mouth_c, (0.15, 0.06, 0.045), seg=14, rings=8, sub=1)
-    paint(mouth, lambda co, n: lin("#40101e") if co.y < mouth_c.y - 0.02 else lin("#200810"))
+    # A wide grin full of crooked teeth (it opens and shuts on its bone when she talks)
+    mouth_c = head_c + F * Vector((0, -0.25 - 0.08 * chin, -0.17 - 0.05 * chin))
+    smile = [mouth_c + Vector((sgn * 0.14, 0.04, 0.035)) for sgn in (-1,)] + [mouth_c + Vector((0, -0.02, 0.0))] + [mouth_c + Vector((0.14, 0.04, 0.035))]
+    mouth = grow("mouth", smile, [(0, 1), (1, 2)], [(0.025, 0.012), (0.045, 0.02), (0.025, 0.012)], sub=1)
+    paint(mouth, lambda co, n: lin("#5a0c18"))
     group(mouth, rigid("mouth"))
     mparts = [mouth]
-    if spec.get("tooth", True):
-        tooth = box("tooth", mouth_c + Vector((0.035, -0.035, 0.02)), (0.032, 0.02, 0.04), bevel=0.006)
-        paint(tooth, lambda co, n: lin("#fff2b0"))
+    rnd2 = random.Random(spec["name"] + "teeth")
+    for k in range(5 if spec.get("tooth", True) else 2):
+        t = (k + 0.5) / 5.0 if spec.get("tooth", True) else 0.3 + k * 0.4
+        x = (t - 0.5) * 0.22
+        top = mouth_c + Vector((x, -0.035 + abs(x) * 0.25, 0.022 + abs(x) * 0.18))
+        tooth = grow("tooth", [top, top + Vector((0, -0.004, -0.035 - rnd2.uniform(0, 0.012)))], [(0, 1)], [(0.014, 0.008), 0.003], sub=0)
+        paint(tooth, lambda co, n: lin("#fff6d8"))
         group(tooth, rigid("mouth"))
         mparts.append(tooth)
-    lip = grow("lip", [mouth_c + Vector((-0.12, 0.0, 0.015)), mouth_c + Vector((0, -0.035, 0.035)), mouth_c + Vector((0.12, 0.0, 0.015))],
-               [(0, 1), (1, 2)], [0.018, 0.02, 0.018], sub=1)
+    lip = grow("lip", [mouth_c + Vector((-0.16, 0.03, 0.05)), mouth_c + Vector((0, -0.04, 0.035)), mouth_c + Vector((0.16, 0.03, 0.05))],
+               [(0, 1), (1, 2)], [0.016, 0.02, 0.016], sub=1)
     paint(lip, lit(plain(skin)))
-    group(lip, rigid("head"))
     head_parts.append(lip)
-    # Great goggling eyes, each a white with a pupil on a bone of its own (the game looks and blinks with them)
+    # Eyes with some form to them: almond whites slanted up at the outer corners, a yellow iris and
+    # a slit pupil (on a bone, to look about), a heavy lid over the top of each
     eyes = []
-    es = spec["eyes"] * 1.3
+    es = spec["eyes"]
     eye_pos = {}
+    iris = spec.get("iris", "#f2b81a")
     for side, sgn in (("L", 1), ("R", -1)):
-        ec = head_c + F * Vector((sgn * 0.115 * es, -0.235, 0.09))
+        ec = head_c + F * Vector((sgn * 0.12 * es ** 0.5, -0.255, 0.07))
         eye_pos[side] = ec
-        white = egg("eye_" + side, ec, (0.11 * es, 0.075 * es, 0.13 * es), seg=16, rings=10, sub=1)
-        paint(white, lambda co, n: lin("#fffbe8") * (0.85 + 0.15 * max(0.0, -n.y)))
+        slant = Matrix.Rotation(-sgn * 0.3, 4, "Y")
+        white = egg("eye_" + side, (0, 0, 0), (0.1 * es, 0.05, 0.062 * es), seg=14, rings=8, sub=1,
+                    shape=lambda v: Vector((v.x, v.y, v.z * (1.0 - 0.35 * (v.x * sgn / (0.1 * es)) ** 2))))
+        white.data.transform(Matrix.Translation(ec) @ slant)
+        paint(white, lambda co, n: lin("#fffbe8") * (0.82 + 0.18 * max(0.0, -n.y)))
         group(white, rigid("eye." + side))
-        pc = ec + Vector((0, -0.068 * es, 0))
-        pupil = egg("pupil_" + side, pc, (0.042 * es, 0.022 * es, 0.05 * es), seg=10, rings=6, sub=1)
-        paint(pupil, lambda co, n: lin(INK))
-        group(pupil, rigid("pupil." + side))
-        shine = egg("shine_" + side, pc + Vector((-0.015 * es, -0.02, 0.022 * es)), (0.012 * es, 0.006, 0.012 * es), seg=6, rings=4, sub=0)
+        pc = ec + Vector((0, -0.04, -0.004))
+        iris_ob = egg("iris_" + side, pc, (0.042 * es, 0.016, 0.046 * es), seg=12, rings=6, sub=1)
+        paint(iris_ob, lambda co, n, pc=pc: lin(iris).lerp(lin(iris) * 0.45, min(1.0, (co - pc).length / (0.046 * es))))
+        group(iris_ob, rigid("pupil." + side))
+        slit = egg("pupil_" + side, pc + Vector((0, -0.012, 0)), (0.012 * es, 0.01, 0.036 * es), seg=8, rings=6, sub=0)
+        paint(slit, lambda co, n: lin(INK))
+        group(slit, rigid("pupil." + side))
+        shine = egg("shine_" + side, pc + Vector((-0.015 * es, -0.022, 0.018 * es)), (0.009 * es, 0.005, 0.009 * es), seg=6, rings=4, sub=0)
         paint(shine, lambda co, n: Vector((1, 1, 1)))
         group(shine, rigid("pupil." + side))
-        eyes += [white, pupil, shine]
+        # The lid: a hood of skin over the top of the eye, lower toward the nose (a mean look)
+        lid = egg("lid_" + side, (0, 0, 0), (0.115 * es, 0.062, 0.05 * es), seg=14, rings=8, sub=1,
+                  shape=lambda v: Vector((v.x, v.y, max(v.z, 0.0) if v.z > 0 else v.z * 0.15)))
+        lid.data.transform(Matrix.Translation(ec + Vector((0, -0.004, 0.024 * es))) @ slant @ Matrix.Rotation(sgn * 0.0, 4, "Y")
+                           @ Matrix.Rotation(-0.25, 4, "X"))
+        paint(lid, lambda co, n: lin(skin) * (0.8 + 0.2 * max(0.0, n.z)))
+        group(lid, rigid("head"))
+        eyes += [white, iris_ob, slit, shine, lid]
 
-    # Hair: strands from under the hat, long, wild, in pigtails or a bob
+    # Hair: a full head of it under the hat, then the style
     hair = []
     style = spec["hair_style"]
-    hc = spec["hair"]
-    n_strands = {"long": 13, "wild": 16, "bob": 14, "pigtails": 8}[style]
+    hc = hair_col
+    cap = egg("hair_cap", head_c + F * Vector((0, 0.03, 0.06)), (head_r.x * 1.08, head_r.y * 1.1, head_r.z * 0.95), seg=16, rings=10, sub=1,
+              shape=lambda v: v if (v.z > -0.02 or v.y > 0.02) else v * Vector((0.9, 0.6, 0.6)))
+    paint(cap, lambda co, n: lin(hc) * (0.7 + 0.3 * max(0.0, n.z)))
+    hair.append(cap)
+    if style == "bob":
+        # A blunt bob, cut square at the jaw, a fringe across the brow (like Mingella's)
+        for sgn in (1, -1):
+            panel = box("hair_panel", head_c + F * Vector((sgn * 0.27, -0.06, -0.08)), (0.09, 0.42, 0.46), bevel=0.03,
+                        rot=Matrix.Rotation(-sgn * 0.12, 3, "Z"))
+            paint(panel, lambda co, n: lin(hc) * (0.75 + 0.25 * max(0.0, -n.y)))
+            hair.append(panel)
+        back = box("hair_back", head_c + F * Vector((0, 0.2, -0.08)), (0.56, 0.12, 0.46), bevel=0.03)
+        paint(back, lambda co, n: lin(hc) * 0.8)
+        hair.append(back)
+    elif style == "bun":
+        bun = egg("hair_bun", head_c + F * Vector((0, 0.3, 0.05)), (0.15, 0.13, 0.15), seg=12, rings=8, sub=1)
+        paint(bun, lambda co, n: lin(hc) * (0.75 + 0.25 * max(0.0, n.z)))
+        hair.append(bun)
+    n_strands = {"long": 13, "wild": 14, "bob": 0, "pigtails": 6, "bun": 6}.get(style, 10)
     for k in range(n_strands):
-        a = -1.9 + 3.8 * k / (n_strands - 1)
-        root = head_c + F * Vector((math.sin(a) * 0.29, math.cos(a) * 0.26, 0.17))
+        a = -1.9 + 3.8 * k / max(1, n_strands - 1)
+        root = head_c + F * Vector((math.sin(a) * 0.29, math.cos(a) * 0.26, 0.0))
         out = Vector((math.sin(a), math.cos(a), 0))
         if style == "long":
-            ln = rnd.uniform(0.7, 1.1)
-            pts = [root, root + out * 0.1 + Vector((0, 0, -0.25 * ln)), root + out * 0.14 + Vector((rnd.uniform(-0.03, 0.03), 0.02, -0.55 * ln)), root + out * 0.17 + Vector((rnd.uniform(-0.05, 0.05), 0.06, -0.8 * ln))]
+            ln = rnd.uniform(0.75, 1.1)
+            pts = [root, root + out * 0.08 + Vector((0, 0, -0.3 * ln)), root + out * 0.11 + Vector((rnd.uniform(-0.03, 0.03), 0.03, -0.62 * ln)),
+                   root + out * 0.13 + Vector((rnd.uniform(-0.05, 0.05), 0.06, -0.85 * ln))]
+            rad = [0.05, 0.04, 0.028, 0.012]
         elif style == "wild":
-            j = Vector((rnd.uniform(-0.08, 0.08), rnd.uniform(-0.04, 0.08), rnd.uniform(-0.05, 0.05)))
-            pts = [root, root + out * 0.16 + Vector((0, 0, -0.15)) + j, root + out * 0.28 + Vector((0, 0.04, -0.35)) + j * 2]
-        elif style == "bob":
-            pts = [root, root + out * 0.1 + Vector((0, 0, -0.18)), root + out * 0.12 + Vector((0, 0.0, -0.3))]
+            j = Vector((rnd.uniform(-0.08, 0.08), rnd.uniform(-0.04, 0.08), rnd.uniform(-0.05, 0.08)))
+            pts = [root, root + out * 0.18 + Vector((0, 0, -0.08)) + j, root + out * 0.32 + Vector((0, 0.04, -0.2)) + j * 2]
+            rad = [0.05, 0.035, 0.008]
         else:
-            pts = [root, root + out * 0.06 + Vector((0, 0, -0.12))]
-        rad = [0.042, 0.034, 0.025, 0.014][:len(pts)]
+            pts = [root, root + out * 0.05 + Vector((0, 0, -0.16))]
+            rad = [0.045, 0.02]
         s_ob = grow("hair", pts, [(i, i + 1) for i in range(len(pts) - 1)], rad, sub=1)
         paint(s_ob, lit(plain(hc, shade(hc, -0.35), pts[-1].z, root.z)))
         hair.append(s_ob)
     if style == "pigtails":
         for sgn in (1, -1):
-            r0 = head_c + F * Vector((sgn * 0.27, 0.06, 0.0))
-            tail = grow("pigtail", [r0, r0 + Vector((sgn * 0.14, 0.04, -0.12)), r0 + Vector((sgn * 0.2, 0.06, -0.32))], [(0, 1), (1, 2)],
-                        [0.06, 0.07, 0.03], sub=2)
+            r0 = head_c + F * Vector((sgn * 0.27, 0.06, -0.02))
+            tail = grow("pigtail", [r0, r0 + Vector((sgn * 0.14, 0.04, -0.12)), r0 + Vector((sgn * 0.2, 0.06, -0.34))], [(0, 1), (1, 2)],
+                        [0.06, 0.07, 0.025], sub=1)
             paint(tail, lit(plain(hc)))
             bow = egg("bow", r0 + Vector((sgn * 0.08, 0.02, -0.04)), (0.06, 0.04, 0.05), seg=8, rings=6, sub=1)
             paint(bow, lambda co, n: lin(spec["band"]))
@@ -564,7 +607,7 @@ def build_witch(spec):
 
     # The hat: a wide drooping brim, a band and buckle, and a cone that bends over at the top
     hat = []
-    hb = head_c + F * Vector((0, 0.03, 0.27))
+    hb = head_c + F * Vector((0, 0.03, 0.31))
     brim_r = spec["brim"] * 1.12
     brim = lathe("brim", [(0.0, brim_r, brim_r * 0.95), (0.03, brim_r * 0.98, brim_r * 0.93), (0.05, 0.32, 0.3), (0.06, 0.3, 0.29)],
                  seg=24, sub=1, wobble=lambda a, z: 0.03 * math.sin(a * 3))
@@ -646,7 +689,7 @@ def build_witch(spec):
         ec = eye_pos[side]
         bone("eye." + side, ec, ec + Vector((0, -0.08, 0)), "head")
         bone("pupil." + side, ec + Vector((0, -0.06, 0)), ec + Vector((0, -0.12, 0)), "eye." + side)
-        bc = head_c + F * Vector((sgn * 0.13, -0.24, 0.33))
+        bc = head_c + F * Vector((sgn * 0.13, -0.24, 0.17))
         bone("brow." + side, bc, bc + Vector((0, -0.06, 0)), "head")
         s, e, w, he = arm_bones[side]
         bone("upper." + side, s, e, "chest")

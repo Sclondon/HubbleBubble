@@ -72,7 +72,7 @@ const POTIONS := [
 const CUSTOMERS := [
 	{"name": "Hattie Hexley", "model": "witch_hattie", "voice": 1.4, "skin": Color("ffcfaa"), "hat": Color("2a6a3a"), "hair": Color("ff7a2a")},
 	{"name": "Granny Gristle", "model": "witch_gristle", "voice": 0.8, "skin": Color("a9b49a"), "hat": Color("4a3a2a"), "hair": Color("f2f0e8")},
-	{"name": "Bella Nightshade", "model": "witch_bella", "voice": 1.15, "skin": Color("7ab0f0"), "hat": Color("1a1a3a"), "hair": Color("1a1a28")},
+	{"name": "Bella Nightshade", "model": "witch_bella", "voice": 1.15, "skin": Color("9ad84a"), "hat": Color("1a2450"), "hair": Color("ff4aa8")},
 	{"name": "Mother Bogwort", "model": "witch_bogwort", "voice": 0.72, "skin": Color("7a9a4a"), "hat": Color("3a5a32"), "hair": Color("3a5a2a")},
 	{"name": "Polly Pumpkins", "model": "witch_polly", "voice": 1.2, "skin": Color("c8a8f0"), "hat": Color("ff8a1a"), "hair": Color("d8302a")},
 	{"name": "Esme Wisp", "model": "witch_esme", "voice": 1.3, "skin": Color("eceaff"), "hat": Color("c8c8e8"), "hair": Color("b8c8ff")},
