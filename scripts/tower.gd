@@ -15,7 +15,7 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_rng.seed = 9
 	add_child(Models.make("tower_top"))
-	_sky()
+	Tower.night_sky(self, _rng)
 	camera_at = Transform3D(Basis(), Vector3(0, 2.3, 3.9)).looking_at(Vector3(0, 1.5, 0))
 	_new_tester()
 
@@ -60,7 +60,8 @@ func try_out(result: Dictionary) -> void:
 		tester.drink(result))
 
 
-func _sky() -> void:
+## The night all round: a starry sky, a big low moon, hills in silhouette far below
+static func night_sky(parent: Node3D, rng: RandomNumberGenerator, low := -6.0) -> void:
 	var sky := MeshInstance3D.new()
 	var ball := SphereMesh.new()
 	ball.radius = 60.0
@@ -70,14 +71,14 @@ func _sky() -> void:
 	var m := ShaderMaterial.new()
 	m.shader = preload("res://shaders/sky.gdshader")
 	sky.material_override = m
-	add_child(sky)
+	parent.add_child(sky)
 	# The moon, big and low, and the swamp far below in silhouette
 	var moon := Shape.new().ball(Vector3.ZERO, Vector3(3.0, 3.0, 0.5), Color("fff2b0"), Color("f0d070"), 18, 10)
 	var mm := moon.piece("moon", Shape.mat(1.0))
 	mm.position = Vector3(-9, 9, -30)
-	add_child(mm)
+	parent.add_child(mm)
 	var hills := Shape.new()
 	for k in 9:
-		var x := -40.0 + k * 10.0 + _rng.randf_range(-3, 3)
-		hills.ball(Vector3(x, -6, -36), Vector3(_rng.randf_range(7, 12), _rng.randf_range(4, 8), 2), Color("1e1a3a"), Color("12102a"), 12, 6)
-	add_child(hills.piece("hills", Shape.mat(0.8)))
+		var x := -40.0 + k * 10.0 + rng.randf_range(-3, 3)
+		hills.ball(Vector3(x, low, -36), Vector3(rng.randf_range(7, 12), rng.randf_range(4, 8), 2), Color("3a2e5a"), Color("241c40"), 12, 6)
+	parent.add_child(hills.piece("hills", Shape.mat(0.8)))

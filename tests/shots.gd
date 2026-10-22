@@ -30,6 +30,15 @@ func _initialize() -> void:
 func _run() -> void:
 	await _frames(10)
 	await _shot("title")
+	if only == "swamp":
+		main.start_game()
+		main.state = "done"
+		main.intro_t = 2.0
+		main.next_night()
+		await _frames(80)
+		root.get_texture().get_image().save_png("%s/swamp%s.png" % [out, "_wide" if wide else ""])
+		quit()
+		return
 	if only.begins_with("tower"):
 		main.start_free()
 		await _frames(5)

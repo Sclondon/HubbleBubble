@@ -173,6 +173,14 @@ func _press(index: int, at: Vector2) -> void:
 				Sfx.play("tap")
 				shop.start_free()
 			return
+		"swamp":
+			if _hit("pause", at):
+				shop.toggle_pause()
+			elif _hit("leave_swamp", at):
+				shop.leave_swamp()
+			elif not shop.paused:
+				shop.gather_at(at)
+				return
 		"tower":
 			if _hit("pause", at):
 				shop.toggle_pause()
@@ -243,9 +251,17 @@ func _draw() -> void:
 			if shop.paused:
 				_draw_pause()
 			return
+		"swamp":
+			_draw_swamp()
+			_draw_speech()
+			_draw_floaters()
+			if shop.paused:
+				_draw_pause()
+			return
 	_draw_top()
 	_draw_tickets()
 	_draw_stir_ring()
+	_draw_counts()
 	_draw_gauge()
 	_draw_strip()
 	_draw_speech()
@@ -501,6 +517,10 @@ func _draw_speech() -> void:
 	if shop.state == "title":
 		box.position.y = anchor.y - bh - 30
 		top_limit = size_now.y * 0.36
+	elif shop.state == "swamp":
+		box.position.y = 140.0
+		top_limit = 0.0
+		low_limit = size_now.y
 	elif sp.who == "witch" and tall:
 		# Your own words, down by the recipe, clear of the brew
 		box.position.y = _strip.position.y - bh - 18
@@ -901,3 +921,45 @@ func _book_tap(at: Vector2) -> void:
 	else:
 		book_page = maxi(0, book_page - (1 if tall else 2))
 	Sfx.play("tap", 0.7)
+
+
+## A little count by each ingredient on the table (in the shop, where they run out)
+func _draw_counts() -> void:
+	if shop.mode != "shop" or shop.state != "play":
+		return
+	for i in 8:
+		if i >= Book.ingredients_on(shop.night):
+			continue
+		var p := shop.spot_screen("jar%d" % i) + Vector2(30, 26)
+		var n: int = shop.stock[i]
+		draw_circle(p, 17, INK)
+		draw_circle(p, 14, Color("f6e7c1") if n > 0 else Color("e8a090"))
+		_text(str(n), p, 20, INK, 0)
+
+
+## Gathering in the swamp: the time left, what's in the basket, and a way out
+func _draw_swamp() -> void:
+	var w := size_now.x
+	var h := size_now.y
+	draw_rect(Rect2(0, 0, w, 70), Color(0.08, 0.04, 0.12, 0.55))
+	_text("THE SWAMP", Vector2(18, 36), 34, Color("a8e870"), 9, HORIZONTAL_ALIGNMENT_LEFT)
+	_text("%d" % int(ceil(maxf(shop.swamp_t, 0.0))), Vector2(w * 0.5, 36), 34, Color.WHITE, 9)
+	_button_pause(buttons.pause.rect)
+	_text("Tap things to gather them for night %d" % (shop.night + 1), Vector2(w * 0.5, 104), 26, PARCH, 8)
+	# The basket: what's on hand for the night
+	var count := Book.ingredients_on(shop.night + 1)
+	var bw := minf(w - 20, 760.0)
+	var r := Rect2(w * 0.5 - bw * 0.5, h - 240, bw, 112)
+	_box(r, PARCH, INK, 5, 20)
+	var slot := bw / 8.0
+	for i in 8:
+		var c := Vector2(r.position.x + slot * (i + 0.5), r.position.y + 50)
+		if i < count:
+			Icons.ingredient(self, i, c, slot * 0.7)
+			_text(str(shop.stock[i]), c + Vector2(0, 42), 22, INK, 0)
+		else:
+			Icons.padlock(self, c, slot * 0.5)
+	var done := Rect2(w * 0.5 - 170, h - 112, 340, 82)
+	buttons["leave_swamp"] = {"rect": done}
+	_box(done, GREEN, INK, 5, 22)
+	_text("Open the shop!", done.get_center(), 32, Color.WHITE, 8)

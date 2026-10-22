@@ -53,6 +53,13 @@ var testing := false
 var camera: Camera3D
 var hut: Hut
 var tower: Tower
+var swamp: Swamp
+## How many of each ingredient are on the table (in the shop; brewing freely there's no end to them)
+var stock: Array = [4, 4, 4, 4, 4, 4, 4, 4]
+const MAX_STOCK := 9
+const SWAMP_TIME := 25.0
+## Seconds left gathering in the swamp
+var swamp_t := 0.0
 ## The brew being tried out on the tower top, and how long since
 var tower_result := {}
 var tower_new := false
@@ -120,6 +127,10 @@ func _ready() -> void:
 	tower.name = "tower"
 	tower.position = Vector3(200, 0, 0)
 	view.add_child(tower)
+	swamp = Swamp.new()
+	swamp.name = "swamp"
+	swamp.position = Vector3(-200, 0, 0)
+	view.add_child(swamp)
 	camera = Camera3D.new()
 	camera.name = "camera"
 	camera.current = true
@@ -147,7 +158,15 @@ func _frame() -> void:
 	(screen.material as ShaderMaterial).set_shader_parameter("amount", 1.0 if n64 else 0.0)
 	(screen.material as ShaderMaterial).set_shader_parameter("size", Vector2(view.size))
 	var tall := s.y > s.x * 1.1
-	if state == "tower":
+	if state == "swamp":
+		# Over the swamp diorama, looking down on it
+		camera.keep_aspect = Camera3D.KEEP_WIDTH if tall else Camera3D.KEEP_HEIGHT
+		camera.fov = 42.0 if tall else 46.0
+		camera.global_transform = swamp.global_transform * swamp.camera_at
+		if tall:
+			camera.global_position = swamp.global_position + Vector3(0, 7.4, 5.0)
+			camera.look_at(swamp.global_position + Vector3(0, 0.0, 0.55))
+	elif state == "tower":
 		# Up on the tower top, looking at the witch in the circle
 		camera.keep_aspect = Camera3D.KEEP_WIDTH if tall else Camera3D.KEEP_HEIGHT
 		camera.fov = 60.0 if tall else 50.0
@@ -242,6 +261,7 @@ func _to_title() -> void:
 
 func start_game() -> void:
 	mode = "shop"
+	stock = [4, 4, 4, 4, 4, 4, 4, 4]
 	night = 1
 	score = 0
 	learned = {}
@@ -262,7 +282,7 @@ func _start_night() -> void:
 	lost = 0
 	heat = 10.0
 	hut.fresh()
-	hut.stock(Book.ingredients_on(night))
+	_show_stock()
 	clock = Book.night_length(night)
 	_spawn_t = 1.2
 	_tick = 0
@@ -300,7 +320,7 @@ func start_free() -> void:
 	_clear_customers()
 	hut.fresh()
 	_reset_brew()
-	hut.stock(8)
+	_show_stock()
 	heat = 20.0
 	Sfx.music(true)
 	_say_witch(Book.rhyme("free"))
@@ -324,6 +344,49 @@ func back_from_tower() -> void:
 	state = "play"
 	_frame()
 	Sfx.play("tap")
+
+
+## Between nights: off to the swamp to gather what the next night will want
+func _to_swamp() -> void:
+	state = "swamp"
+	swamp_t = SWAMP_TIME
+	swamp.open_for(Book.ingredients_on(night + 1))
+	_frame()
+	Sfx.music(true, 0.9)
+	_say_witch(Book.rhyme("swamp"))
+
+
+## Gathers whatever's tapped in the swamp
+func gather_at(at: Vector2) -> void:
+	var best := ""
+	var best_k := INF
+	for id: String in swamp.spots:
+		var sp: Dictionary = swamp.spots[id]
+		var c := screen_of(sp.at)
+		var r := (screen_of(sp.at + camera.global_basis.x * sp.r) - c).length()
+		var k := c.distance_to(at) / maxf(r, 1.0)
+		if k < 1.0 and k < best_k:
+			best_k = k
+			best = id
+	if best == "":
+		return
+	var i := int(best.substr(6))
+	if stock[i] >= MAX_STOCK:
+		_float("Full!", at, Color("ffd0a0"))
+		return
+	if swamp.gather(i):
+		stock[i] += 1
+		_float("+1 %s" % Book.INGREDIENTS[i].name, at + Vector2(0, -40), Color("c8f0a0"))
+
+
+## Done gathering: on to the next night
+func leave_swamp() -> void:
+	if state != "swamp":
+		return
+	Sfx.music(false)
+	night += 1
+	_start_night()
+	_frame()
 
 
 func begin_play() -> void:
@@ -363,14 +426,13 @@ func next_night() -> void:
 	if intro_t < 1.0:
 		return
 	if state == "done":
-		night += 1
-		_start_night()
+		_to_swamp()
 	elif state == "over":
 		_to_title()
 
 
 func toggle_pause() -> void:
-	if state in ["play", "intro", "tower"]:
+	if state in ["play", "intro", "tower", "swamp"]:
 		paused = not paused
 		book_open = false
 		Sfx.music(not paused and state == "play")
@@ -379,7 +441,7 @@ func toggle_pause() -> void:
 
 func quit_to_title() -> void:
 	paused = false
-	if state == "tower":
+	if state in ["tower", "swamp"]:
 		state = "play"
 		_frame()
 	_to_title()
@@ -423,6 +485,10 @@ func _process(dt: float) -> void:
 		_play(dt)
 	elif state == "tower":
 		tower_t += dt
+	elif state == "swamp":
+		swamp_t -= dt
+		if swamp_t <= 0.0:
+			leave_swamp()
 	else:
 		heat = move_toward(heat, 30.0 if state == "title" else 12.0, dt * 5.0)
 	hut.heat = heat
@@ -675,6 +741,9 @@ func _land(which: int, at: Vector3) -> void:
 	Sfx.play("plop", randf_range(0.9, 1.15))
 	_last_added = which
 	_added_count += 1
+	if mode == "shop":
+		stock[which] = maxi(0, stock[which] - 1)
+		_show_stock()
 	_record({"kind": Book.ADD, "what": which})
 
 
@@ -754,7 +823,15 @@ func _brewing() -> bool:
 
 ## Whether an ingredient is on the table now: in the shop, as the nights bring them; brewing freely, all
 func stocked(which: int) -> bool:
-	return mode == "free" or which < Book.ingredients_on(night)
+	return mode == "free" or (which < Book.ingredients_on(night) and stock[which] > 0)
+
+
+## Puts the table right: what's there to use, and how many
+func _show_stock() -> void:
+	var avail := []
+	for i in 8:
+		avail.append(stocked(i))
+	hut.show_stock(avail)
 
 
 func _keys_stir(dt: float) -> void:
@@ -949,6 +1026,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if state == "tower":
 		if key.keycode in [KEY_SPACE, KEY_ENTER]:
 			back_from_tower()
+		return
+	if state == "swamp":
+		if key.keycode in [KEY_SPACE, KEY_ENTER]:
+			leave_swamp()
+		elif key.keycode >= KEY_1 and key.keycode <= KEY_8:
+			gather_at(screen_of(swamp.spots.get("gather%d" % (key.keycode - KEY_1), {"at": Vector3.ZERO}).at))
 		return
 	if state == "intro":
 		begin_play()

@@ -431,7 +431,7 @@ func _cauldron() -> void:
 	sparkle.lifetime = 1.0
 	sparkle.scale_amount_curve = _rise_and_pop()
 	sparkle.emitting = false
-	smoke = _particles("smoke", 20, Shape.mat(0.3), 0.22)
+	smoke = _particles("smoke", 20, Shape.mat(0.3), 0.15)
 	smoke.position = Vector3(0, BREW_LEVEL + 0.2, 0)
 	smoke.one_shot = true
 	smoke.explosiveness = 0.8
@@ -552,12 +552,20 @@ func _table() -> void:
 	add_child(stick)
 
 
-## Shows which jars are stocked tonight
+## Shows which jars are stocked tonight (the first `count`)
 func stock(count: int) -> void:
+	var avail := []
+	for i in 8:
+		avail.append(i < count)
+	show_stock(avail)
+
+
+## Shows each jar full, or an empty cobwebbed bowl
+func show_stock(avail: Array) -> void:
 	for i in 8:
 		var holder: Node3D = props["jar%d" % i]
-		holder.get_node("full").visible = i < count
-		holder.get_node("empty").visible = i >= count
+		holder.get_node("full").visible = avail[i]
+		holder.get_node("empty").visible = not avail[i]
 
 
 ## A thing on the table hops when it's tapped (`shake` wobbles it: not now)
@@ -806,7 +814,7 @@ func drop(bit: Node3D, which: int, landed: Callable) -> void:
 
 func _more_particles() -> void:
 	# Soft coloured wisps that rise and spread
-	wisps = _particles("wisps", 16, Shape.flame_mat(Color.WHITE, 0.55), 0.18)
+	wisps = _particles("wisps", 16, Shape.flame_mat(Color.WHITE, 0.32), 0.12)
 	wisps.position = Vector3(0, BREW_LEVEL + 0.15, 0)
 	wisps.explosiveness = 0.7
 	wisps.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
@@ -820,7 +828,7 @@ func _more_particles() -> void:
 	wisps.damping_max = 0.8
 	wisps.lifetime = 2.0
 	wisps.scale_amount_min = 0.8
-	wisps.scale_amount_max = 2.2
+	wisps.scale_amount_max = 1.5
 	wisps.scale_amount_curve = _rise_and_pop()
 	wisps.emitting = false
 	wisps.visible = false

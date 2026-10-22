@@ -56,24 +56,29 @@ func _tick() -> void:
 	_wait -= dt
 	if _wait > 0.0 or main.spoil_t > 0.0:
 		return
-	var want := main.current_step()
-	if want.is_empty():
+	var o := main.selected_order()
+	if o.is_empty():
 		return
+	# Follows the book: the next of its steps not yet in the pot
+	var steps: Array = o.steps
+	var done := _done_count(steps)
+	if done >= steps.size():
+		return
+	var want: Dictionary = steps[done]
 	match want.kind:
 		Book.ADD:
 			# Once, early on, grab the wrong jar
 			if not _fumbled and _t > 7.0:
 				_fumbled = true
 				main.add((want.what + 1) % Book.ingredients_on(main.night))
-				_wait = 2.2
+				_wait = 1.0
 				return
 			main.add(want.what)
-			_wait = 0.55
+			_wait = 0.8
 		Book.HEAT:
 			var band := Book.band_of(main.heat)
 			if band < want.level and main.heat < Book.HEAT_BANDS[want.level] + 8.0:
 				main.pump()
-				main.hud.squeeze = 1.0
 				_wait = 0.22
 		Book.STIR:
 			main.stir(want.dir * TAU * 1.6 * dt)
@@ -83,3 +88,21 @@ func _tick() -> void:
 		Book.BOTTLE:
 			main.bottle()
 			_wait = 1.0
+
+
+## How many of the recipe's steps are in the pot already (anything else in it: tipped out)
+func _done_count(steps: Array) -> int:
+	var n := 0
+	for s: Dictionary in main.brew:
+		if n >= steps.size():
+			break
+		var w: Dictionary = steps[n]
+		if s.kind != w.kind or (s.kind == Book.ADD and s.what != w.what):
+			main.tip_out()
+			return 0
+		if s.kind == Book.STIR and s.turns < w.turns:
+			return n
+		if s.kind == Book.HEAT and s.level < w.level:
+			return n
+		n += 1
+	return n

@@ -31,8 +31,10 @@ func _run() -> void:
 
 	# The Sleeping Draught, by the book: a toadstool, a bat wing, warmed
 	_order("Sleeping Draught")
+	var shrooms: int = main.stock[1]
 	await _add("shroom")
 	await _add("wing")
+	_check(main.stock[1] == shrooms - 1, "each ingredient used comes off the table")
 	_check(main.brew.size() == 2, "what goes in is written down (%d)" % main.brew.size())
 	main.heat = 35.0
 	await _seconds(0.5)
@@ -164,6 +166,14 @@ func _run() -> void:
 	_check(main.state == "done", "making the quota shuts the shop for the night")
 	await _seconds(1.1)
 	main.next_night()
+	_check(main.state == "swamp", "then it is off to the swamp to gather")
+	await _frames(3)
+	var had: int = main.stock[0]
+	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
+	_check(main.stock[0] == had + 1, "a tap on the newts gathers an Eye of Newt (%d to %d)" % [had, main.stock[0]])
+	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
+	_check(main.stock[0] == had + 1, "and it takes a moment to grow back")
+	main.leave_swamp()
 	_check(main.state == "intro", "and the next night begins")
 	main.begin_play()
 	main.night_coins = 0

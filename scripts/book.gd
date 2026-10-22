@@ -157,6 +157,10 @@ const RHYMES := {
 		"Off they stomp, the grumpy lout,\nslowcoach witch, you've missed them out!",
 		"Waited long and left in a huff,\nmy brewing wasn't quick enough!",
 	],
+	"swamp": [
+		"Out to the swamp with basket and knife,\ngather the makings of potion and life!",
+		"Newts in the pool and bats in the tree,\nthe swamp gives up all its goodies to me!",
+	],
 	"free": [
 		"Brew what you will and brew what you please,\nthen up to the tower, and see what it sees!",
 	],

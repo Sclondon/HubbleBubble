@@ -1248,6 +1248,98 @@ def build_props():
     out["tower_top"] = tower
 
 
+
+    # The swamp, as a little diorama on a round of earth cut away at the sides: a murky pool with
+    # lily pads, a crooked dead tree, reeds, a rotten log, mossy stones, a corner of a graveyard and
+    # a hump where the moon flowers grow. Where each ingredient is gathered is left clear for it.
+    sw = []
+    rnd_s = random.Random(47)
+    base = lathe("swamp_base", [(-0.9, 3.2, 3.0), (-0.1, 3.3, 3.1), (0.0, 3.25, 3.05)], seg=40, sub=0)
+
+    def earth(co, n):
+        if n.z > 0.5:
+            # Grass and mud on top, darker toward the pool
+            r = math.hypot(co.x + 0.6, co.y - 0.2)
+            c = lin("#5a7a32").lerp(lin("#3a4a22"), max(0.0, 1.0 - r / 1.6) * 0.8)
+            if math.sin(co.x * 13) * math.sin(co.y * 11) > 0.6:
+                c = c.lerp(lin("#7a9a3a"), 0.4)
+            return c
+        # The cut side, in layers of soil
+        band = math.floor((co.z + 0.9) / 0.18)
+        return [lin("#5a3a22"), lin("#7a5030"), lin("#4a2e1a"), lin("#6a4428"), lin("#3a2414")][band % 5] * (0.8 + 0.2 * abs(n.x))
+    sb = base.modifiers.new("sub", "SUBSURF")
+    sb.subdivision_type = "SIMPLE"
+    sb.levels = 3
+    base = bake(base)
+    paint(base, earth)
+    sw.append(base)
+    # The pool, sunk a little, murky green, with lily pads and a ring of reeds
+    pool = egg("swamp_pool", (-0.6, 0.2, 0.01), (1.3, 1.0, 0.02), seg=28, rings=6, sub=1)
+    paint(pool, lambda co, n: lin("#3a6a4a").lerp(lin("#1a3a2a"), min(1.0, math.hypot(co.x + 0.6, co.y - 0.2) * 0.5)))
+    sw.append(pool)
+    for k in range(6):
+        a = k * 1.1 + 0.3
+        p = Vector((-0.6 + math.cos(a) * rnd_s.uniform(0.3, 0.9), 0.2 + math.sin(a) * rnd_s.uniform(0.2, 0.7), 0.035))
+        pad = lathe("lilypad", [(0.0, 0.16, 0.16), (0.015, 0.16, 0.16)], seg=14, sub=0)
+        pad.data.transform(Matrix.Translation(p))
+        paint(pad, lambda co, n: lin("#6aba4a") if n.z > 0.5 else lin("#3a7a2a"))
+        sw.append(pad)
+        if k % 3 == 0:
+            fl = egg("lily_flower", p + Vector((0.04, 0, 0.05)), (0.05, 0.05, 0.04), seg=8, rings=5, sub=0)
+            paint(fl, lambda co, n: lin("#ffb0d0"))
+            sw.append(fl)
+    for k in range(18):
+        a = 2 * math.pi * k / 18 + rnd_s.uniform(-0.1, 0.1)
+        rr = rnd_s.uniform(1.05, 1.35)
+        b0 = Vector((-0.6 + math.cos(a) * rr * 1.25, 0.2 + math.sin(a) * rr, 0.0))
+        if b0.y < -0.4 and abs(b0.x + 0.6) < 0.6:
+            continue
+        reed = grow("reed", [b0, b0 + Vector((rnd_s.uniform(-0.05, 0.05), 0, rnd_s.uniform(0.35, 0.7)))], [(0, 1)], [0.018, 0.006], sub=0)
+        paint(reed, lambda co, n: lin("#7a9a3a").lerp(lin("#4a6a2a"), 0.5))
+        sw.append(reed)
+        if k % 4 == 0:
+            cat = egg("cattail", b0 + Vector((0, 0, 0.55)), (0.025, 0.025, 0.07), seg=6, rings=4, sub=0)
+            paint(cat, lambda co, n: lin("#6a4428"))
+            sw.append(cat)
+    # The crooked dead tree at the back, with a branch for bats to hang from
+    tree_pts = [(1.4, 1.5, 0.0), (1.35, 1.45, 0.7), (1.5, 1.5, 1.4), (1.3, 1.4, 2.0)]
+    trunk = grow("tree", tree_pts, [(0, 1), (1, 2), (2, 3)], [0.22, 0.16, 0.12, 0.05], sub=1)
+    paint(trunk, lambda co, n: lin("#5a4438").lerp(lin("#3a2a24"), 0.5 * (math.sin(co.z * 20) > 0)))
+    sw.append(trunk)
+    for (a, b, r) in (((1.45, 1.48, 1.2), (0.7, 1.3, 1.6), 0.07), ((1.42, 1.46, 1.7), (2.0, 1.2, 2.2), 0.05), ((1.35, 1.42, 0.5), (1.9, 1.7, 0.7), 0.06)):
+        br = grow("branch", [a, b], [(0, 1)], [r, 0.015], sub=1)
+        paint(br, lambda co, n: lin("#4a3830"))
+        sw.append(br)
+    # A rotten log on the left where toadstools grow
+    log = grow("log", [(-2.3, -0.6, 0.12), (-1.6, -1.2, 0.12)], [(0, 1)], [0.17, 0.15], sub=1)
+    paint(log, lambda co, n: lin("#6a4a2a").lerp(lin("#5a7a32"), 0.6 if n.z > 0.6 else 0.0))
+    sw.append(log)
+    # Mossy stones, a mound for the moon flowers, and a corner of graveyard
+    for k in range(7):
+        a = rnd_s.uniform(0, 2 * math.pi)
+        rr = rnd_s.uniform(1.8, 2.8)
+        p = Vector((math.cos(a) * rr, math.sin(a) * rr * 0.9, 0.05))
+        s_ = rnd_s.uniform(0.12, 0.25)
+        st = egg("stone", p, (s_, s_ * 0.9, s_ * 0.6), seg=9, rings=6, sub=1, shape=lambda v: v * (1.0 + 0.15 * math.sin(v.x * 30)))
+        paint(st, lambda co, n: lin("#8a8298").lerp(lin("#5a8a3a"), 0.6 if n.z > 0.5 else 0.0))
+        sw.append(st)
+    mound = egg("mound", (0.9, -1.4, 0.0), (0.6, 0.5, 0.25), seg=14, rings=8, sub=1)
+    paint(mound, lambda co, n: lin("#4a6a3a").lerp(lin("#7aa8ff"), 0.15))
+    sw.append(mound)
+    for k, (x, y) in enumerate(((-2.0, 1.4), (-2.4, 0.9), (-1.6, 1.9))):
+        grave = box("grave", (x, y, 0.22), (0.3, 0.1, 0.45), bevel=0.06, rot=Matrix.Rotation(rnd_s.uniform(-0.2, 0.2), 3, "Y") @ Matrix.Rotation(0.4, 3, "Z"))
+        paint(grave, lambda co, n: lin("#9a96a8").lerp(lin("#6a6678"), 0.4 * max(0.0, -n.z)))
+        sw.append(grave)
+    # Old bones where the dragon lay
+    for k in range(4):
+        rib = grow("rib", [(2.1, -0.4 + k * 0.22, 0.02), (2.35, -0.4 + k * 0.22, 0.25), (2.55, -0.4 + k * 0.22, 0.05)], [(0, 1), (1, 2)], [0.035, 0.03, 0.02], sub=1)
+        paint(rib, lambda co, n: lin("#f2ead2"))
+        sw.append(rib)
+    skull = egg("dragon_skull", (2.3, 0.6, 0.12), (0.25, 0.18, 0.14), seg=10, rings=7, sub=1)
+    paint(skull, lambda co, n: lin("#f2ead2"))
+    sw.append(skull)
+    out["swamp"] = sw
+
     # The stirring stick: a long wooden paddle. Origin at the top end; it runs along +Y to the blade.
     stick = tube("stick", (0, 0, 0), (0, 1.25, 0), 0.04, 0.035, seg=10, sub=1)
     paint(stick, lambda co, n: lin("#b07a40").lerp(lin("#7a4a24"), 0.5 * (math.sin(co.y * 30) > 0.7)))
