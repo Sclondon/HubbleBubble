@@ -99,7 +99,7 @@ func layout() -> void:
 	else:
 		for i in 3:
 			_tickets.append(Rect2(12, 84 + i * 160, 320, 150))
-		_strip = Rect2(350, 80, w - 350 - 100, 116)
+		_strip = Rect2(12, h - 142, minf(w * 0.3, 760.0), 128)
 		_gauge = Rect2(w - 64, 220, 44, h * 0.42)
 	for i in _tickets.size():
 		buttons["ticket%d" % i] = {"rect": _tickets[i]}
@@ -476,7 +476,7 @@ func _draw_speech() -> void:
 		anchor = shop.screen_of(shop.witch.global_position + Vector3(0.3, 3.4, 0))
 	else:
 		anchor = shop.screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.9, 0))
-	var top_limit := 270.0 if tall else 210.0
+	var top_limit := 270.0 if tall else 84.0
 	var low_limit := size_now.y * 0.62
 	var box := Rect2(anchor + Vector2(-bw * 0.5, -bh - 40), Vector2(bw, bh))
 	if shop.state == "title":
