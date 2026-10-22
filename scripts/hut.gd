@@ -13,10 +13,23 @@ const IRON := Color("3a3346")
 const IRON_L := Color("5d5470")
 
 ## Where the serving window's customer stands
-const WINDOW_SPOT := Vector3(1.05, 1.85, -3.3)
+const WINDOW_SPOT := Vector3(1.05, 0.3, -3.45)
+## About where a customer's face is
+const WINDOW_HEAD := Vector3(1.05, 2.0, -3.3)
 const CAULDRON_RIM := 1.36
 const BREW_LEVEL := 1.24
 const BREW_R := 0.8
+const TABLE := Vector3(0.25, 0, 2.25)
+const INGREDIENT_MODELS := ["ing_eye", "ing_shroom", "ing_wing", "ing_leg", "ing_spider", "ing_petal", "ing_pepper", "ing_scale"]
+
+## Things that can be tapped: id -> node, and id -> {at: where, r: how big}
+var props := {}
+var spots := {}
+var stick: Node3D
+var _bellows_top: Node3D
+var _squeeze := 0.0
+var _pokes := {}
+var _prop_scale := {}
 
 var brew_mat: ShaderMaterial
 var brew_disc: MeshInstance3D
@@ -46,10 +59,12 @@ func _ready() -> void:
 	_window()
 	_shelves()
 	_cauldron()
+	_table()
 	_bits()
 
 
 func _process(dt: float) -> void:
+	_animate_props(dt)
 	var t := Time.get_ticks_msec() / 1000.0
 	# The fire leaps with the heat; its light on everything follows
 	var h := heat / 100.0
@@ -306,25 +321,10 @@ func _candle_flame(at: Vector3) -> MeshInstance3D:
 
 
 func _cauldron() -> void:
-	# Stones round the fire, logs, and the iron pot on three stubby legs
-	var s := Shape.new()
-	for i in 10:
-		var a := TAU * i / 10.0
-		var shade := Color("8a8098").lerp(Color("5a5068"), _rng.randf())
-		s.ball(Vector3(cos(a) * 1.05, 0.1, sin(a) * 0.95), Vector3(0.22, 0.14, 0.2), shade.lightened(0.1), shade.darkened(0.2), 7, 4)
-	for i in 3:
-		var a := TAU * i / 3.0 + 0.4
-		s.tube(Vector3(cos(a) * 0.65, 0.08, sin(a) * 0.65), Vector3(-cos(a) * 0.4, 0.14, -sin(a) * 0.4), 0.1, 0.1, Color("6b4024"), Color("3a2414"), 6)
-		s.tube(Vector3(cos(a + 1.0) * 0.6, 0.0, sin(a + 1.0) * 0.6), Vector3(cos(a + 1.0) * 0.5, 0.52, sin(a + 1.0) * 0.5), 0.07, 0.05, IRON, null, 6)
-	add_child(s.piece("firepit"))
-	var pot := Shape.new()
-	pot.ball(Vector3(0, 0.95, 0), Vector3(0.98, 0.62, 0.98), IRON_L, IRON.darkened(0.3), 18, 9, Basis(), (CAULDRON_RIM - 0.95) / 0.62)
-	pot.ring(Vector3(0, CAULDRON_RIM, 0), 0.82, 0.1, IRON_L.lightened(0.15), 22, 6, Basis(), IRON)
-	# The inside, dark, so the brew sits down in it
-	pot.tube(Vector3(0, CAULDRON_RIM - 0.02, 0), Vector3(0, BREW_LEVEL - 0.15, 0), 0.8, 0.78, Color("15101c"), null, 20, false)
-	for sgn: float in [-1.0, 1.0]:
-		pot.ring(Vector3(sgn * 0.98, 1.2, 0), 0.14, 0.035, IRON_L, 10, 4, Basis(Vector3.FORWARD, PI * 0.5))
-	add_child(pot.piece("cauldron"))
+	# The fire pit and the iron pot are Blender models (art/make_models.py); the brew's surface,
+	# the flames and the bubbles are the game's own
+	add_child(Models.make("firepit"))
+	add_child(Models.make("cauldron"))
 	brew_mat = ShaderMaterial.new()
 	brew_mat.shader = preload("res://shaders/brew.gdshader")
 	brew_disc = Shape.new().disc(Vector3.ZERO, Vector2(BREW_R, BREW_R), Color.WHITE, 24).piece("brew", brew_mat)
@@ -446,3 +446,118 @@ func _rise_and_pop() -> Curve:
 	c.add_point(Vector2(0.85, 0.9))
 	c.add_point(Vector2(1.0, 0.0))
 	return c
+
+
+## The table in front of the pot, everything on it, the bellows by the fire and the stirring stick.
+## Each thing that can be tapped gets a spot: where it is and how big, for picking it on the screen.
+func _table() -> void:
+	var table := Models.make("table")
+	table.position = TABLE
+	add_child(table)
+	# Three rows: the top step (jars 1-4), the lower step (5-8), and the front (wand, book, bottles)
+	var rows_y := [1.18, 1.0, 0.82]
+	var rows_z := [TABLE.z - 0.52, TABLE.z - 0.06, TABLE.z + 0.45]
+	var cols := [-0.9, -0.3, 0.3, 0.9]
+	for i in 8:
+		var at := Vector3(TABLE.x + cols[i % 4], rows_y[i / 4], rows_z[i / 4])
+		var holder := Node3D.new()
+		holder.name = "jar%d" % i
+		holder.position = at
+		add_child(holder)
+		var full := Models.make(INGREDIENT_MODELS[i])
+		full.name = "full"
+		full.scale = Vector3.ONE * 1.2
+		holder.add_child(full)
+		var empty := Models.make("ing_empty")
+		empty.name = "empty"
+		empty.scale = Vector3.ONE * 1.2
+		holder.add_child(empty)
+		props["jar%d" % i] = holder
+		spots["jar%d" % i] = {"at": at + Vector3(0, 0.18, 0), "r": 0.3}
+	var book := Models.make("book")
+	book.position = Vector3(TABLE.x, rows_y[2], rows_z[2])
+	book.scale = Vector3.ONE * 1.3
+	add_child(book)
+	props["book"] = book
+	spots["book"] = {"at": book.position + Vector3(0, 0.2, 0), "r": 0.32}
+	var jar := Models.make("wand_jar")
+	jar.position = Vector3(TABLE.x - 0.85, rows_y[2], rows_z[2])
+	jar.scale = Vector3.ONE * 1.3
+	add_child(jar)
+	var wand := Models.make("wand")
+	wand.name = "wand"
+	wand.position = Vector3(0, 0.12, 0)
+	wand.rotation.z = 0.25
+	jar.add_child(wand)
+	props["wand"] = jar
+	spots["wand"] = {"at": jar.position + Vector3(0, 0.35, 0), "r": 0.3}
+	var rack := Models.make("bottles")
+	rack.position = Vector3(TABLE.x + 0.85, rows_y[2], rows_z[2])
+	rack.scale = Vector3.ONE * 1.25
+	add_child(rack)
+	props["bottle"] = rack
+	spots["bottle"] = {"at": rack.position + Vector3(0, 0.2, 0), "r": 0.38}
+	# The bellows lie by the fire with their nozzle on it
+	var bellows := Node3D.new()
+	bellows.name = "bellows"
+	bellows.position = Vector3(1.55, 0.62, 0.15)
+	var d := (Vector3(0.3, 0, 0.1) - bellows.position).normalized()
+	bellows.rotation = Vector3(0, atan2(d.z, -d.x), 0.18)
+	bellows.scale = Vector3.ONE * 1.5
+	add_child(bellows)
+	bellows.add_child(Models.make("bellows"))
+	_bellows_top = Models.make("bellows_top")
+	bellows.add_child(_bellows_top)
+	props["bellows"] = bellows
+	spots["bellows"] = {"at": bellows.position + Vector3(0, 0.15, 0), "r": 0.5}
+	spots["stir"] = {"at": Vector3(0, CAULDRON_RIM, 0), "r": 0.95}
+	stick = Models.make("stick")
+	stick.name = "stick"
+	add_child(stick)
+
+
+## Shows which jars are stocked tonight
+func stock(count: int) -> void:
+	for i in 8:
+		var holder: Node3D = props["jar%d" % i]
+		holder.get_node("full").visible = i < count
+		holder.get_node("empty").visible = i >= count
+
+
+## A thing on the table hops when it's tapped (`shake` wobbles it: not now)
+func poke(id: String, shake := false) -> void:
+	if not props.has(id):
+		return
+	_pokes[id] = -1.0 if shake else 0.0
+
+
+func squeeze() -> void:
+	_squeeze = 1.0
+
+
+func _animate_props(dt: float) -> void:
+	_squeeze = maxf(0.0, _squeeze - dt * 3.5)
+	if _bellows_top != null:
+		_bellows_top.rotation.z = lerpf(0.32, 0.04, _squeeze)
+	for id: String in _pokes.keys():
+		var t: float = _pokes[id]
+		var node: Node3D = props[id]
+		var base: Vector3 = _prop_scale.get(id, node.scale)
+		_prop_scale[id] = base
+		if t < 0.0:
+			# A shake: -1 counting up to 0
+			t += dt * 2.5
+			node.rotation.y = sin(t * 40.0) * 0.12 * -t
+			if t >= 0.0:
+				node.rotation.y = 0.0
+				_pokes.erase(id)
+				continue
+		else:
+			t += dt
+			var k := sin(minf(t / 0.3, 1.0) * PI)
+			node.scale = base * (1.0 + k * 0.18)
+			if t >= 0.3:
+				node.scale = base
+				_pokes.erase(id)
+				continue
+		_pokes[id] = t

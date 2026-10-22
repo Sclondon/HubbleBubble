@@ -70,13 +70,12 @@ func _ready() -> void:
 	hut = Hut.new()
 	hut.name = "hut"
 	add_child(hut)
-	witch = Witch.new()
+	witch = Witch.make("witch_grumblewart", true)
 	witch.name = "witch"
 	witch.position = Vector3(-0.95, 0, -0.85)
 	witch.rotation.y = 0.45
-	witch.scale = Vector3.ONE * 1.15
-	witch.rim = Hut.CAULDRON_RIM
 	witch.brew = Hut.BREW_LEVEL
+	witch.stick = hut.stick
 	add_child(witch)
 	camera = Camera3D.new()
 	camera.name = "camera"
@@ -100,21 +99,69 @@ func _frame() -> void:
 	if tall:
 		# Phone: the 3D sits between the tickets and the controls, so it is framed by width
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
-		camera.fov = 60.0
-		camera.position = Vector3(0.3, 2.6, 4.9)
-		var spare := clampf((s.y / s.x - 1.78) * 0.9, 0.0, 0.5)
-		camera.look_at(Vector3(0.3, 1.5 - spare, -1.0))
+		camera.fov = 54.0
+		# Close in and looking well down, so the window, the pot and the stepped table stack up the screen
+		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.5, 0.6)
+		camera.position = Vector3(0.25, 3.05 + spare * 0.5, 4.5 + spare * 0.4)
+		camera.look_at(Vector3(0.25, 0.78, -0.5))
 	else:
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
-		camera.fov = 52.0
-		camera.position = Vector3(0.25, 3.3, 6.0)
-		camera.look_at(Vector3(0.25, 1.75, -1.0))
+		camera.fov = 50.0
+		camera.position = Vector3(0.25, 3.9, 6.6)
+		camera.look_at(Vector3(0.25, 1.2, 0.2))
 	if hud != null:
 		hud.layout()
 
 
 func screen_of(p: Vector3) -> Vector2:
 	return camera.unproject_position(p)
+
+
+## What in the hut is under a point on the screen ("jar3", "bellows", "stir"...), or ""
+func pick(at: Vector2) -> String:
+	var best := ""
+	var best_k := INF
+	for id: String in hut.spots:
+		var s: Dictionary = hut.spots[id]
+		if camera.is_position_behind(s.at):
+			continue
+		var c := screen_of(s.at)
+		var r := (screen_of(s.at + camera.global_basis.x * s.r) - c).length()
+		var k := c.distance_to(at) / maxf(r, 1.0)
+		if k < 1.0 and k < best_k:
+			best_k = k
+			best = id
+	return best
+
+
+func spot_screen(id: String) -> Vector2:
+	return screen_of(hut.spots[id].at)
+
+
+## Something in the hut tapped
+func tap(id: String) -> void:
+	if id.begins_with("jar"):
+		var which := int(id.substr(3))
+		if which < Book.ingredients_on(night):
+			add(which)
+		else:
+			hut.poke(id, true)
+			Sfx.play("huff", 1.5, -8.0)
+		return
+	match id:
+		"bellows":
+			pump()
+		"wand":
+			if night >= 3:
+				zap()
+			else:
+				hut.poke(id, true)
+				Sfx.play("huff", 1.5, -8.0)
+		"bottle":
+			bottle()
+		"book":
+			hut.poke(id)
+			toggle_book()
 
 
 func cauldron_screen() -> Array:
@@ -129,8 +176,9 @@ func _to_title() -> void:
 	state = "title"
 	orders.clear()
 	selected = -1
-	_clear_critters()
+	_clear_customers()
 	hut.fresh()
+	hut.stock(8)
 	heat = 30.0
 	Sfx.music(false)
 	_say_witch(Book.rhyme("title"))
@@ -150,7 +198,7 @@ func _start_night() -> void:
 	intro_t = 0.0
 	orders.clear()
 	selected = -1
-	_clear_critters()
+	_clear_customers()
 	progress = 0
 	spoil_t = 0.0
 	night_coins = 0
@@ -158,6 +206,7 @@ func _start_night() -> void:
 	lost = 0
 	heat = 10.0
 	hut.fresh()
+	hut.stock(Book.ingredients_on(night))
 	clock = Book.night_length(night)
 	_spawn_t = 1.2
 	_tick = 0
@@ -194,9 +243,9 @@ func begin_play() -> void:
 func _close_shop() -> void:
 	clock = 0.0
 	for o in orders:
-		if is_instance_valid(o.critter):
-			o.critter.duck(true)
-			o.critter.queue_free()
+		if is_instance_valid(o.customer):
+			o.customer.duck(true)
+			o.customer.queue_free()
 	orders.clear()
 	selected = -1
 	Sfx.music(false)
@@ -255,8 +304,8 @@ func set_sound(on: bool) -> void:
 		Sfx.music(true)
 
 
-func _clear_critters() -> void:
-	for c in get_tree().get_nodes_in_group("critter"):
+func _clear_customers() -> void:
+	for c in get_tree().get_nodes_in_group("customer"):
 		c.queue_free()
 
 
@@ -307,8 +356,8 @@ func _play(dt: float) -> void:
 	for i in range(orders.size() - 1, -1, -1):
 		var o := orders[i]
 		o.patience -= dt
-		if is_instance_valid(o.critter):
-			o.critter.patience = o.patience / o.full
+		if is_instance_valid(o.customer):
+			o.customer.patience = o.patience / o.full
 		if o.patience <= 0.0:
 			_storm_off(i)
 	if orders.is_empty() and _spawn_t > 2.0:
@@ -356,9 +405,9 @@ func _play(dt: float) -> void:
 
 func _eyes() -> void:
 	var o := selected_order()
-	if not o.is_empty() and is_instance_valid(o.critter):
-		witch.look_at_point = Hut.WINDOW_SPOT + Vector3(0, 0.6, 0) if speech.get("who", "") != "witch" else camera.global_position
-		o.critter.look_at_point = witch.global_position + Vector3(0, 2.0, 0)
+	if not o.is_empty() and is_instance_valid(o.customer):
+		witch.look_at_point = Hut.WINDOW_HEAD if speech.get("who", "") != "witch" else camera.global_position
+		o.customer.look_at_point = witch.global_position + Vector3(0, 2.0, 0)
 	elif state == "play":
 		witch.look_at_point = Vector3(0, Hut.BREW_LEVEL, 0)
 	else:
@@ -404,26 +453,26 @@ func _new_order() -> void:
 		if r <= 0.0:
 			potion = choices[i]
 			break
-	var kinds := Book.CUSTOMERS.map(func(c: Dictionary) -> String: return c.kind)
-	var used := orders.map(func(o: Dictionary) -> String: return o.who.kind)
+	var kinds := Book.CUSTOMERS.map(func(c: Dictionary) -> String: return c.model)
+	var used := orders.map(func(o: Dictionary) -> String: return o.who.model)
 	var free := range(Book.CUSTOMERS.size()).filter(func(i: int) -> bool: return not used.has(kinds[i]))
 	var who: Dictionary = Book.CUSTOMERS[free[randi() % free.size()]]
 	var steps := Book.steps_of(Book.POTIONS[potion].recipe)
 	var full := Book.patience(steps.size(), night)
-	var critter := Critter.make(who.kind)
-	critter.add_to_group("critter")
-	critter.position = Hut.WINDOW_SPOT + Vector3(0, -0.6, 0)
-	critter.scale = Vector3.ONE * 1.15
-	add_child(critter)
+	var customer := Witch.make(who.model)
+	customer.add_to_group("customer")
+	customer.position = Hut.WINDOW_SPOT
+	customer.scale = Vector3.ONE * 1.05
+	add_child(customer)
 	_next_order_id += 1
 	var o := {"id": _next_order_id, "potion": potion, "steps": steps, "patience": full, "full": full,
-			"critter": critter, "who": who, "colour": Book.colour_of(Book.POTIONS[potion].recipe), "born": clock}
+			"customer": customer, "who": who, "colour": Book.colour_of(Book.POTIONS[potion].recipe), "born": clock}
 	orders.append(o)
 	Sfx.play("tap", 0.6)
 	if selected < 0:
 		select(orders.size() - 1)
 	else:
-		critter.duck(true)
+		customer.duck(true)
 		hud.bump(orders.size() - 1)
 
 
@@ -431,14 +480,14 @@ func select(i: int) -> void:
 	if i < 0 or i >= orders.size() or i == selected:
 		return
 	var old := selected_order()
-	if not old.is_empty() and is_instance_valid(old.critter):
-		old.critter.duck(true)
+	if not old.is_empty() and is_instance_valid(old.customer):
+		old.customer.duck(true)
 	var was := selected
 	selected = i
 	var o := orders[i]
-	o.critter.duck(false)
+	o.customer.duck(false)
 	var line: String = Book.ORDER_LINES[o.id % Book.ORDER_LINES.size()] % Book.POTIONS[o.potion].name
-	_say_folk(line, o.who.voice, o.critter)
+	_say_folk(line, o.who.voice, o.customer)
 	# The brew so far carries over if the new recipe starts the same way; otherwise out it goes
 	if was >= 0 and progress > 0 and spoil_t <= 0.0:
 		if not _same_start(old.steps, o.steps, progress):
@@ -459,9 +508,9 @@ func _same_start(a: Array, b: Array, n: int) -> bool:
 
 func _storm_off(i: int) -> void:
 	var o := orders[i]
-	if is_instance_valid(o.critter):
-		o.critter.duck(false)
-		o.critter.angry()
+	if is_instance_valid(o.customer):
+		o.customer.duck(false)
+		o.customer.angry()
 	Sfx.play("huff")
 	combo = 0
 	lost += 1
@@ -482,10 +531,10 @@ func _remove_order(i: int) -> void:
 			var prev_progress := progress
 			selected = 0
 			var o := orders[0]
-			o.critter.duck(false)
-			if is_instance_valid(o.critter):
+			o.customer.duck(false)
+			if is_instance_valid(o.customer):
 				var line: String = Book.ORDER_LINES[o.id % Book.ORDER_LINES.size()] % Book.POTIONS[o.potion].name
-				_say_folk(line, o.who.voice, o.critter)
+				_say_folk(line, o.who.voice, o.customer)
 			if prev_progress > 0 and spoil_t <= 0.0 and not _same_start(old_steps, o.steps, prev_progress):
 				hut.fresh()
 				_reset_brew()
@@ -500,6 +549,7 @@ func add(which: int) -> void:
 	if not _brewing() or which >= Book.ingredients_on(night):
 		return
 	witch.act("toss")
+	hut.poke("jar%d" % which)
 	hut.plop(Book.INGREDIENTS[which].brew)
 	Sfx.play("plop", randf_range(0.9, 1.15))
 	_act({"kind": Book.ADD, "what": which})
@@ -510,13 +560,15 @@ func pump() -> void:
 		return
 	heat = minf(100.0, heat + PUMP)
 	Sfx.play("puff", randf_range(0.9, 1.1), -3.0)
-	hud.squeeze = 1.0
+	hut.squeeze()
+	hut.poke("bellows")
 
 
 func zap() -> void:
 	if not _brewing() or night < 3:
 		return
 	witch.act("zap")
+	hut.poke("wand")
 	hut.zap()
 	Sfx.play("zap")
 	_act({"kind": Book.ZAP})
@@ -527,10 +579,11 @@ func bottle() -> void:
 		return
 	var want := current_step()
 	if want.get("kind", -1) == Book.BOTTLE:
+		hut.poke("bottle")
 		_serve()
 	else:
 		Sfx.play("huff", 1.4, -6.0)
-		hud.shake("bottle")
+		hut.poke("bottle", true)
 		if not selected_order().is_empty():
 			_float("Not ready yet!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ffd0a0"))
 
@@ -655,11 +708,11 @@ func _serve() -> void:
 	Sfx.play("coins", 1.0, -2.0)
 	Sfx.play("cheer", 1.0, -4.0)
 	witch.act("cackle")
-	var at := screen_of(Hut.WINDOW_SPOT + Vector3(0, 0.9, 0.3))
+	var at := screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.2, 0.3))
 	_float("+%d" % coins, at, Color("ffe060"), true)
 	if combo > 1:
 		_float("Combo x%d!" % combo, at + Vector2(0, 50), Color("a0ffb0"))
-	_fly_bottle(o.colour, o.critter)
+	_fly_bottle(o.colour, o.customer)
 	if randf() < 0.6:
 		_say_witch(Book.rhyme("serve"))
 	_remove_order(i)
@@ -667,24 +720,23 @@ func _serve() -> void:
 	_reset_brew()
 
 
-func _fly_bottle(col: Color, critter: Critter) -> void:
+func _fly_bottle(col: Color, customer: Witch) -> void:
 	var b := Node3D.new()
-	var s := Shape.new()
-	s.ball(Vector3(0, 0.12, 0), Vector3(0.14, 0.14, 0.14), col.lightened(0.15), col.darkened(0.25), 10, 6)
-	s.tube(Vector3(0, 0.22, 0), Vector3(0, 0.36, 0), 0.05, 0.05, Color("d8f0f8"), null, 6)
-	s.tube(Vector3(0, 0.36, 0), Vector3(0, 0.42, 0), 0.06, 0.055, Color("c8925a"), null, 6)
-	b.add_child(s.piece("bottle", Shape.mat(0.3)))
+	b.add_child(Models.make("potion", Shape.mat(0.3)))
+	var liquid := Shape.mat(0.35)
+	liquid.set_shader_parameter("tint", Shape.lin3(col))
+	b.add_child(Models.make("potion_liquid", liquid))
 	add_child(b)
 	var from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)
-	var to := Hut.WINDOW_SPOT + Vector3(0, 0.55, 0.45)
+	var to := Hut.WINDOW_HEAD + Vector3(0.2, -0.45, 0.45)
 	var tw := create_tween()
 	tw.tween_method(func(t: float) -> void:
 		b.position = from.lerp(to, t) + Vector3(0, sin(t * PI) * 1.1, 0)
 		b.rotation.z = t * TAU, 0.0, 1.0, 0.55)
 	tw.tween_callback(func() -> void:
 		b.queue_free()
-		if is_instance_valid(critter):
-			critter.happy())
+		if is_instance_valid(customer):
+			customer.happy())
 
 
 # --- talk ---
@@ -693,10 +745,10 @@ func _say_witch(text: String) -> void:
 	speech = {"who": "witch", "text": text, "shown": 0.0, "life": 2.2 + text.length() * 0.045, "voice": 1.0}
 
 
-func _say_folk(text: String, voice: float, critter: Critter) -> void:
+func _say_folk(text: String, voice: float, customer: Witch) -> void:
 	if speech.get("who", "") == "witch" and speech.shown < speech.text.length():
 		return
-	speech = {"who": "folk", "text": text, "shown": 0.0, "life": 1.6 + text.length() * 0.04, "voice": voice, "critter": critter}
+	speech = {"who": "folk", "text": text, "shown": 0.0, "life": 1.6 + text.length() * 0.04, "voice": voice, "customer": customer}
 
 
 func _update_speech(dt: float) -> void:
@@ -712,14 +764,14 @@ func _update_speech(dt: float) -> void:
 		if k % 3 == 0 and ch != " " and ch != "\n":
 			Sfx.say("witch" if speech.who == "witch" else "folk", speech.voice)
 	witch.talking = talking and speech.who == "witch"
-	var c: Variant = speech.get("critter")
+	var c: Variant = speech.get("customer")
 	if c != null and is_instance_valid(c):
-		(c as Critter).talking = talking
+		(c as Witch).talking = talking
 	if not talking:
 		speech.life -= dt
 		if speech.life <= 0.0:
 			if c != null and is_instance_valid(c):
-				(c as Critter).talking = false
+				(c as Witch).talking = false
 			speech = {}
 
 

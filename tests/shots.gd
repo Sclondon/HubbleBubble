@@ -48,8 +48,8 @@ func _run() -> void:
 	if only == "" or only == "witch":
 		var cam := main.camera
 		var keep := cam.transform
-		cam.position = main.witch.global_position + Vector3(0.6, 2.4, 2.2)
-		cam.look_at(main.witch.global_position + Vector3(0, 2.2, 0))
+		cam.position = main.witch.global_position + Vector3(0.9, 2.3, 2.8)
+		cam.look_at(main.witch.global_position + Vector3(0.3, 1.6, 0))
 		await _shot("witch")
 		cam.position = Hut.WINDOW_SPOT + Vector3(0, 0.4, 2.6)
 		cam.look_at(Hut.WINDOW_SPOT + Vector3(0, 0.3, 0))

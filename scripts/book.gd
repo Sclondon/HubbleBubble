@@ -47,15 +47,15 @@ const POTIONS := [
 	{"name": "Giant's Grog", "recipe": "leg scale H3 S-1 shroom H1 Z", "night": 5},
 ]
 
-## Who comes to the window. `voice` is how high they talk.
+## Who comes to the window: other witches (models/witch_<model>.glb). `voice` is how high they talk;
+## the colours are for the little face on their ticket.
 const CUSTOMERS := [
-	{"name": "Hopsworth", "kind": "frog", "voice": 0.85},
-	{"name": "Molesworth", "kind": "mole", "voice": 0.95},
-	{"name": "Boo-Hoo", "kind": "ghost", "voice": 1.45},
-	{"name": "Gubbins", "kind": "goblin", "voice": 1.2},
-	{"name": "Fungus", "kind": "shroom", "voice": 1.1},
-	{"name": "Jack", "kind": "pumpkin", "voice": 0.75},
-	{"name": "Flutter", "kind": "bat", "voice": 1.6},
+	{"name": "Hattie Hexley", "model": "witch_hattie", "voice": 1.4, "skin": Color("ffcfaa"), "hat": Color("2a6a3a"), "hair": Color("ff7a2a")},
+	{"name": "Granny Gristle", "model": "witch_gristle", "voice": 0.8, "skin": Color("a9b49a"), "hat": Color("4a3a2a"), "hair": Color("f2f0e8")},
+	{"name": "Bella Nightshade", "model": "witch_bella", "voice": 1.15, "skin": Color("7ab0f0"), "hat": Color("1a1a3a"), "hair": Color("1a1a28")},
+	{"name": "Mother Bogwort", "model": "witch_bogwort", "voice": 0.72, "skin": Color("7a9a4a"), "hat": Color("3a5a32"), "hair": Color("3a5a2a")},
+	{"name": "Polly Pumpkins", "model": "witch_polly", "voice": 1.2, "skin": Color("c8a8f0"), "hat": Color("ff8a1a"), "hair": Color("d8302a")},
+	{"name": "Esme Wisp", "model": "witch_esme", "voice": 1.3, "skin": Color("eceaff"), "hat": Color("c8c8e8"), "hair": Color("b8c8ff")},
 ]
 
 const ORDER_LINES := [

@@ -166,6 +166,16 @@ func _run() -> void:
 			for j in range(i + 1, ids.size()):
 				if a.intersects(main.hud.buttons[ids[j]].rect):
 					clash.append(ids[i] + "/" + ids[j])
+		# Everything in the hut that can be tapped is on the screen, and picks out as itself
+		for id: String in main.hut.spots:
+			var p := main.spot_screen(id)
+			if not Rect2(Vector2.ZERO, main.hud.size_now).has_point(p):
+				clash.append(id + " off screen")
+			elif main.pick(p) != id:
+				clash.append(id + " picks as " + main.pick(p))
+			for b: String in main.hud.buttons:
+				if not b in ["resume", "sound", "quit"] and (main.hud.buttons[b].rect as Rect2).has_point(p):
+					clash.append(id + " under " + b)
 		_check(clash.is_empty(), "%s: every control on screen, apart (%s)" % ["wide" if wide else "tall", ", ".join(clash)])
 
 	# The end of a night, passed and failed
@@ -204,8 +214,8 @@ func _order(name: String) -> void:
 
 func _clear_orders() -> void:
 	for o in main.orders:
-		if is_instance_valid(o.critter):
-			o.critter.queue_free()
+		if is_instance_valid(o.customer):
+			o.customer.queue_free()
 	main.orders.clear()
 	main.selected = -1
 	main._reset_brew()
@@ -213,6 +223,8 @@ func _clear_orders() -> void:
 
 
 func _centre(id: String) -> Vector2:
+	if main.hut.spots.has(id):
+		return main.spot_screen(id)
 	return (main.hud.buttons[id].rect as Rect2).get_center()
 
 

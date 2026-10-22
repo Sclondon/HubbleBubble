@@ -90,31 +90,17 @@ func layout() -> void:
 	_tickets.clear()
 	_top = Rect2(0, 0, w, 70)
 	buttons["pause"] = {"rect": Rect2(w - 74, 8, 62, 56)}
-	var order := ["jar0", "jar1", "jar2", "jar3", "wand", "bellows", "jar4", "jar5", "jar6", "jar7", "book", "bottle"]
 	if tall:
 		var tw := (w - 40) / 3.0
 		for i in 3:
 			_tickets.append(Rect2(10 + i * (tw + 10), 80, tw, 150))
-		var cell := Vector2((w - 20) / 6.0, 150)
-		_panel = Rect2(0, h - cell.y * 2 - 24, w, cell.y * 2 + 24)
-		for i in order.size():
-			var cx := i % 6
-			var cy := i / 6
-			buttons[order[i]] = {"rect": Rect2(10 + cx * cell.x, _panel.position.y + 12 + cy * cell.y, cell.x, cell.y).grow(-5)}
-		_strip = Rect2(10, _panel.position.y - 128, w - 20, 118)
-		_gauge = Rect2(w - 62, 290, 48, _strip.position.y - 310)
+		_strip = Rect2(10, h - 132, w - 20, 118)
+		_gauge = Rect2(w - 50, 290, 36, h * 0.3)
 	else:
 		for i in 3:
 			_tickets.append(Rect2(12, 84 + i * 160, 320, 150))
-		var cell := Vector2(132, 150)
-		var land := ["jar0", "jar1", "jar2", "jar3", "jar4", "jar5", "jar6", "jar7", "wand", "book", "bellows", "bottle"]
-		_panel = Rect2(w - cell.x * 3 - 28, h - cell.y * 4 - 28, cell.x * 3 + 28, cell.y * 4 + 28)
-		for i in land.size():
-			var cx := i % 3
-			var cy := i / 3
-			buttons[land[i]] = {"rect": Rect2(_panel.position.x + 14 + cx * cell.x, _panel.position.y + 14 + cy * cell.y, cell.x, cell.y).grow(-5)}
-		_strip = Rect2(350, h - 136, _panel.position.x - 370, 122)
-		_gauge = Rect2(_panel.position.x - 66, 110, 48, h - 270)
+		_strip = Rect2(350, 80, w - 350 - 100, 116)
+		_gauge = Rect2(w - 64, 220, 44, h * 0.42)
 	for i in _tickets.size():
 		buttons["ticket%d" % i] = {"rect": _tickets[i]}
 
@@ -186,34 +172,20 @@ func _press(index: int, at: Vector2) -> void:
 		if id in ["resume", "sound", "quit"] or not _hit(id, at):
 			continue
 		_touches[index] = {"id": id, "last": at}
-		if id.begins_with("jar"):
-			var which := int(id.substr(3))
-			if which < Book.ingredients_on(shop.night):
-				shop.add(which)
-			else:
-				shake(id)
-				Sfx.play("huff", 1.5, -8.0)
-		elif id.begins_with("ticket"):
+		if id.begins_with("ticket"):
 			shop.select(int(id.substr(6)))
-		else:
-			match id:
-				"pause":
-					shop.toggle_pause()
-				"bellows":
-					shop.pump()
-					_held_pump[index] = HOLD_PUMP * 1.6
-				"wand":
-					if shop.night >= 3:
-						shop.zap()
-					else:
-						shake(id)
-				"bottle":
-					shop.bottle()
-				"book":
-					shop.toggle_book()
+		elif id == "pause":
+			shop.toggle_pause()
 		return
-	# Anywhere else in the middle stirs the pot
-	_touches[index] = {"id": "stir", "last": at}
+	var thing := shop.pick(at)
+	if thing == "" or thing == "stir":
+		# The pot, or anywhere else in the middle: stirring
+		_touches[index] = {"id": "stir", "last": at}
+		return
+	_touches[index] = {"id": thing, "last": at}
+	shop.tap(thing)
+	if thing == "bellows":
+		_held_pump[index] = HOLD_PUMP * 1.6
 
 
 func _hit(id: String, at: Vector2) -> bool:
@@ -233,7 +205,6 @@ func _draw() -> void:
 	_draw_stir_ring()
 	_draw_gauge()
 	_draw_strip()
-	_draw_panel()
 	_draw_speech()
 	_draw_floaters()
 	_draw_hint()
@@ -351,7 +322,7 @@ func _draw_tickets() -> void:
 			_box(r.grow(6), GOLD, INK, 4, 22)
 		_box(r, PARCH, INK, 4, 16)
 		var face_r := 25.0
-		Icons.face(self, o.who.kind, r.position + Vector2(36, 38), face_r)
+		Icons.face(self, o.who, r.position + Vector2(36, 38), face_r)
 		Icons.bottle(self, r.position + Vector2(r.size.x - 38, 52), 62, o.colour)
 		var name: String = Book.POTIONS[o.potion].name
 		var fs := 22 if tall else 24
@@ -485,59 +456,6 @@ func _check(c: Vector2, s: float) -> void:
 	Icons.line(self, pts, s * 0.3, GREEN)
 
 
-func _draw_panel() -> void:
-	_box(_panel.grow(4), WOOD, INK, 5, 22)
-	# Shelf boards behind the jars
-	var on := Book.ingredients_on(shop.night)
-	for id: String in buttons:
-		var r: Rect2 = buttons[id].rect
-		if _shakes.has(id):
-			r.position.x += sin(_shakes[id] * 60.0) * 6.0 * (1.0 - _shakes[id] / 0.6)
-		var held := false
-		for t: Dictionary in _touches.values():
-			if t.id == id:
-				held = true
-		if held:
-			r = r.grow(-4)
-		if id.begins_with("jar"):
-			var which := int(id.substr(3))
-			var lit := which < on
-			_box(r, Color("b8e0e8") if lit else Color("4a3a50"), INK, 4, 22)
-			draw_rect(Rect2(r.position + Vector2(10, 8), Vector2(r.size.x - 20, 14)), Color("c8925a") if lit else Color("5a4a5a"))
-			if lit:
-				Icons.ingredient(self, which, r.get_center() + Vector2(0, 2), minf(r.size.x, r.size.y) * 0.72)
-				_text(Book.INGREDIENTS[which].key, r.position + Vector2(16, r.size.y - 16), 18, Color.WHITE, 5)
-				Icons.shine(self, r.position + Vector2(r.size.x * 0.8, r.size.y * 0.35), Vector2(5, 16), 0.1)
-			else:
-				Icons.padlock(self, r.get_center(), minf(r.size.x, r.size.y) * 0.6)
-		match id:
-			"bellows":
-				_box(r, Color("e8a050"), INK, 4, 22)
-				Icons.bellows(self, r.get_center() + Vector2(0, -12), minf(r.size.x, r.size.y) * 0.72, squeeze)
-				_text("HEAT", r.get_center() + Vector2(0, r.size.y * 0.32), 22, Color.WHITE, 6)
-			"bottle":
-				var ready: bool = shop.current_step().get("kind", -1) == Book.BOTTLE
-				var col := Color("8ae070") if ready else Color("a8c8d8")
-				if ready:
-					_box(r.grow(4 + sin(_t * 8.0) * 3.0), GOLD, INK, 0, 26, false)
-				_box(r, col, INK, 4, 22)
-				var brew: Color = shop.hut.brew_col if shop.state == "play" else Color("c8e8ff")
-				Icons.bottle(self, r.get_center() + Vector2(0, -8), minf(r.size.x, r.size.y) * 0.66, brew)
-				_text("BOTTLE", r.get_center() + Vector2(0, r.size.y * 0.34), 20, Color.WHITE, 6)
-			"wand":
-				var lit := shop.night >= 3
-				_box(r, Color("c8a0f0") if lit else Color("4a3a50"), INK, 4, 22)
-				if lit:
-					Icons.wand(self, r.get_center() + Vector2(0, -6), minf(r.size.x, r.size.y) * 0.62)
-					_text("ZAP", r.get_center() + Vector2(0, r.size.y * 0.34), 20, Color.WHITE, 6)
-				else:
-					Icons.padlock(self, r.get_center(), minf(r.size.x, r.size.y) * 0.6)
-			"book":
-				_box(r, Color("e8c890"), INK, 4, 22)
-				Icons.book(self, r.get_center() + Vector2(0, -8), minf(r.size.x, r.size.y) * 0.6)
-				_text("BOOK", r.get_center() + Vector2(0, r.size.y * 0.34), 20, Color.WHITE, 6)
-
-
 func _draw_speech() -> void:
 	var sp := shop.speech
 	if sp.is_empty():
@@ -555,11 +473,11 @@ func _draw_speech() -> void:
 	bw += 40
 	var anchor: Vector2
 	if sp.who == "witch":
-		anchor = shop.screen_of(shop.witch.global_position + Vector3(0.3, 3.9, 0))
+		anchor = shop.screen_of(shop.witch.global_position + Vector3(0.3, 3.4, 0))
 	else:
-		anchor = shop.screen_of(Hut.WINDOW_SPOT + Vector3(0, 1.0, 0))
-	var top_limit := 250.0 if tall else 80.0
-	var low_limit := _strip.position.y - 10 if tall else size_now.y - 150
+		anchor = shop.screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.9, 0))
+	var top_limit := 270.0 if tall else 210.0
+	var low_limit := size_now.y * 0.62
 	var box := Rect2(anchor + Vector2(-bw * 0.5, -bh - 40), Vector2(bw, bh))
 	if shop.state == "title":
 		box.position.y = anchor.y - bh - 30
@@ -610,16 +528,16 @@ func _draw_hint() -> void:
 	var target := Vector2.ZERO
 	match want.kind:
 		Book.ADD:
-			target = (buttons["jar%d" % want.what].rect as Rect2).get_center()
+			target = shop.spot_screen("jar%d" % want.what)
 		Book.HEAT:
 			if Book.band_of(shop.heat) < want.level:
-				target = (buttons.bellows.rect as Rect2).get_center()
+				target = shop.spot_screen("bellows")
 			else:
 				return
 		Book.ZAP:
-			target = (buttons.wand.rect as Rect2).get_center()
+			target = shop.spot_screen("wand")
 		Book.BOTTLE:
-			target = (buttons.bottle.rect as Rect2).get_center()
+			target = shop.spot_screen("bottle")
 		Book.STIR:
 			var cs := shop.cauldron_screen()
 			var a: float = _t * 3.0 * want.dir

@@ -207,43 +207,23 @@ static func book(ci: CanvasItem, c: Vector2, s: float) -> void:
 	star(ci, c + Vector2(-4, 0) * k, 14 * k, Color("f2c840"), 3.0)
 
 
-## A customer's little face, for their ticket
-static func face(ci: CanvasItem, kind: String, c: Vector2, r: float) -> void:
-	var cols := {"frog": Color("6cc840"), "mole": Color("8a5a3a"), "ghost": Color("f2f4ff"), "goblin": Color("b8d84a"),
-			"shroom": Color("e8382a"), "pumpkin": Color("ff8a1a"), "bat": Color("7a4aa8")}
+## A customer's little face for her ticket: skin, hair, goggle eyes and her hat
+static func face(ci: CanvasItem, who: Dictionary, c: Vector2, r: float) -> void:
 	var w := maxf(2.0, r * 0.12)
-	match kind:
-		"goblin":
-			for sgn: float in [-1.0, 1.0]:
-				blob(ci, PackedVector2Array([c + Vector2(sgn * r * 0.7, -r * 0.2), c + Vector2(sgn * r * 1.5, -r * 0.6), c + Vector2(sgn * r * 0.8, r * 0.3)]), cols[kind], w)
-		"bat":
-			for sgn: float in [-1.0, 1.0]:
-				blob(ci, PackedVector2Array([c + Vector2(sgn * r * 0.3, -r * 0.7), c + Vector2(sgn * r * 0.75, -r * 1.45), c + Vector2(sgn * r * 0.85, -r * 0.4)]), cols[kind], w)
-	ball(ci, c, r, cols[kind], w)
-	match kind:
-		"shroom":
-			ci.draw_circle(c + Vector2(0, r * 0.4), r * 0.6, Color("f0e2c0"))
-			ci.draw_circle(c + Vector2(-r * 0.5, -r * 0.4), r * 0.15, Color.WHITE)
-			ci.draw_circle(c + Vector2(r * 0.4, -r * 0.55), r * 0.12, Color.WHITE)
-		"pumpkin":
-			for sgn: float in [-1.0, 1.0]:
-				blob(ci, PackedVector2Array([c + Vector2(sgn * r * 0.15, -r * 0.05), c + Vector2(sgn * r * 0.6, -r * 0.05), c + Vector2(sgn * r * 0.38, -r * 0.45)]), Color("ffe060"))
-			blob(ci, oval(c + Vector2(0, r * 0.4), Vector2(r * 0.55, r * 0.15)), Color("ffe060"))
-			line(ci, PackedVector2Array([c + Vector2(0, -r), c + Vector2(r * 0.2, -r * 1.3)]), w * 1.4, Color("4a8a2a"))
-			return
-		"ghost":
-			ci.draw_colored_polygon(oval(c + Vector2(-r * 0.32, -r * 0.1), Vector2(r * 0.17, r * 0.27)), INK)
-			ci.draw_colored_polygon(oval(c + Vector2(r * 0.32, -r * 0.1), Vector2(r * 0.17, r * 0.27)), INK)
-			ci.draw_circle(c + Vector2(0, r * 0.45), r * 0.15, INK)
-			return
-		"mole":
-			ci.draw_circle(c + Vector2(0, r * 0.25), r * 0.22, Color("ff7aa0"))
-	var ey := -r * 0.15 if kind != "shroom" else r * 0.15
+	var skin: Color = who.skin
+	var hat: Color = who.hat
+	var hair: Color = who.hair
+	blob(ci, oval(c + Vector2(0, r * 0.25), Vector2(r * 1.05, r * 0.85)), hair, w)
+	ball(ci, c + Vector2(0, r * 0.15), r * 0.82, skin, w)
 	for sgn: float in [-1.0, 1.0]:
-		ci.draw_circle(c + Vector2(sgn * r * 0.34, ey), r * 0.26, INK)
-		ci.draw_circle(c + Vector2(sgn * r * 0.34, ey), r * 0.2, Color.WHITE)
-		ci.draw_circle(c + Vector2(sgn * r * 0.3, ey + r * 0.03), r * 0.09, INK)
-	ci.draw_arc(c + Vector2(0, r * 0.3), r * 0.3, 0.3, PI - 0.3, 10, INK, w * 0.8, true)
+		ci.draw_circle(c + Vector2(sgn * r * 0.3, r * 0.02), r * 0.27, INK)
+		ci.draw_circle(c + Vector2(sgn * r * 0.3, r * 0.02), r * 0.21, Color.WHITE)
+		ci.draw_circle(c + Vector2(sgn * r * 0.27, r * 0.06), r * 0.09, INK)
+	blob(ci, PackedVector2Array([c + Vector2(-r * 0.1, r * 0.2), c + Vector2(r * 0.1, r * 0.2), c + Vector2(r * 0.05, r * 0.62)]), skin.darkened(0.1), w * 0.7)
+	ci.draw_arc(c + Vector2(0, r * 0.55), r * 0.25, 0.4, PI - 0.4, 10, INK, w * 0.8, true)
+	blob(ci, oval(c + Vector2(0, -r * 0.42), Vector2(r * 1.15, r * 0.24)), hat, w)
+	blob(ci, PackedVector2Array([c + Vector2(-r * 0.55, -r * 0.48), c + Vector2(r * 0.55, -r * 0.48), c + Vector2(r * 0.42, -r * 1.05), c + Vector2(r * 0.8, -r * 1.5), c + Vector2(r * 0.1, -r * 1.2)]), hat, w)
+	ci.draw_rect(Rect2(c + Vector2(-r * 0.52, -r * 0.62), Vector2(r * 1.04, r * 0.14)), Color("f2c840"))
 
 
 static func coin(ci: CanvasItem, c: Vector2, r: float) -> void:
