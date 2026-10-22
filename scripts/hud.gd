@@ -25,6 +25,11 @@ var squeeze := 0.0
 
 var font: FontVariation
 var font_bold: FontVariation
+var book_font: Font
+var book_title_font: Font
+## The page the book is open at, and its buttons
+var book_page := 0
+var buttons_book := {}
 var _tickets: Array[Rect2] = []
 var _strip := Rect2()
 var _gauge := Rect2()
@@ -47,6 +52,8 @@ func _ready() -> void:
 	font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 500}
 	font_bold = FontVariation.new()
 	font_bold.base_font = base
+	book_font = load("res://fonts/LibreBaskerville-Italic.ttf")
+	book_title_font = load("res://fonts/LibreBaskerville.ttf")
 	font_bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 650}
 	layout()
 
@@ -193,7 +200,7 @@ func _press(index: int, at: Vector2) -> void:
 			shop.quit_to_title()
 		return
 	if shop.book_open:
-		shop.toggle_book()
+		_book_tap(at)
 		return
 	for id: String in buttons:
 		if id in ["resume", "sound", "n64", "quit"] or not _hit(id, at):
@@ -659,34 +666,198 @@ func _draw_pause() -> void:
 func _draw_book() -> void:
 	var w := size_now.x
 	var h := size_now.y
-	var pots := Book.potions_for(shop.night)
-	var cols := 1 if tall else 2
-	var rows := int(ceil(pots.size() / float(cols)))
-	var r := Rect2(16, 90, w - 32, h - 120)
-	if not tall:
-		r = Rect2(w * 0.5 - minf(900, w * 0.47), 90, minf(1800, w * 0.94), h - 120)
-	_card(r)
-	_text("GRUMBLEWART'S RECIPES", Vector2(r.get_center().x, r.position.y + 40), 38, GOLD, 10)
-	var row_h := minf(78.0, (r.size.y - 110) / rows)
-	var col_w := (r.size.x - 40) / cols
-	for k in pots.size():
-		var p: int = pots[k]
-		var cx := r.position.x + 20 + (k / rows) * col_w
-		var y := r.position.y + 84 + (k % rows) * row_h + row_h * 0.5
-		var steps := Book.steps_of(Book.POTIONS[p].recipe)
-		Icons.bottle(self, Vector2(cx + row_h * 0.35, y + 2), row_h * 0.7, Book.colour_of(Book.POTIONS[p].recipe))
-		var name_w := minf(230.0, col_w * 0.36)
-		_text(_wrap(Book.POTIONS[p].name, int(minf(24, row_h * 0.34)), name_w), Vector2(cx + row_h * 0.75, y), int(minf(24, row_h * 0.34)), INK, 0, HORIZONTAL_ALIGNMENT_LEFT)
-		var icon := minf(row_h * 0.82, (col_w - name_w - row_h * 0.8 - 10) / steps.size())
-		for i in steps.size():
-			var c := Vector2(cx + row_h * 0.8 + name_w + 10 + icon * (i + 0.5), y)
-			Icons.step(self, steps[i], c, icon * 0.9)
-			if steps[i].kind == Book.STIR:
-				_text("x%d" % steps[i].turns, c + Vector2(icon * 0.3, icon * 0.3), int(icon * 0.3), Color.WHITE, 5)
-	_text("Tap to close", Vector2(r.get_center().x, r.end.y - 18), 22, Color("6a4a3a"), 0)
+	draw_rect(Rect2(Vector2.ZERO, size_now), Color(0.04, 0.02, 0.06, 0.65))
+	var pages := _book_pages()
+	book_page = clampi(book_page, 0, pages.size() - 1)
+	buttons_book.clear()
+	var spread := not tall
+	var page_w := minf(w - 40, 640.0) if not spread else minf((w - 80) * 0.5, 620.0)
+	var page_h := minf(h - 170, 1100.0)
+	var top := 96.0
+	if spread:
+		var left := Rect2(w * 0.5 - page_w, top, page_w, page_h)
+		var right := Rect2(w * 0.5, top, page_w, page_h)
+		var first := book_page - book_page % 2
+		_old_page(left, pages[first], first)
+		if first + 1 < pages.size():
+			_old_page(right, pages[first + 1], first + 1)
+		else:
+			_paper(right)
+		draw_rect(Rect2(w * 0.5 - 6, top, 12, page_h), Color(0.2, 0.12, 0.06, 0.5))
+	else:
+		_old_page(Rect2(w * 0.5 - page_w * 0.5, top, page_w, page_h), pages[book_page], book_page)
+	# Turning and closing
+	var y := top + page_h + 14
+	buttons_book["prev"] = Rect2(w * 0.5 - page_w * (1.0 if spread else 0.5), y, 150, 56)
+	buttons_book["next"] = Rect2(w * 0.5 + page_w * (1.0 if spread else 0.5) - 150, y, 150, 56)
+	buttons_book["close"] = Rect2(w * 0.5 - 75, y, 150, 56)
+	for id: String in ["prev", "close", "next"]:
+		var r: Rect2 = buttons_book[id]
+		_box(r, Color("6b3e22"), INK, 4, 16)
+		_text({"prev": "< Back", "close": "Close", "next": "Turn >"}[id], r.get_center(), 24, Color("f2e2b8"), 6, HORIZONTAL_ALIGNMENT_CENTER, book_font)
 
 
-## Up on the tower top: who's trying it, what it is, and what the book says it does
+## What's in the book: the contents, the craft, the ingredients, a page for each potion she knows
+## of tonight, and what she's found by brewing
+func _book_pages() -> Array:
+	var out: Array = [{"kind": "index"}, {"kind": "craft"}, {"kind": "ingredients"}]
+	var pots := Book.potions_for(99 if shop.mode == "free" else shop.night)
+	for p: int in pots:
+		out.append({"kind": "potion", "potion": p})
+	var found: Array = shop.discoveries.keys()
+	for i in range(0, maxi(found.size(), 1), 4):
+		out.append({"kind": "found", "from": i})
+	return out
+
+
+## The page a potion is on
+func book_page_of(potion: int) -> int:
+	var pages := _book_pages()
+	for i in pages.size():
+		if pages[i].kind == "potion" and pages[i].potion == potion:
+			return i
+	return 0
+
+
+## A sheet of old paper: browned at the edges, a stain or two
+func _paper(r: Rect2) -> void:
+	_box(r.grow(4), Color("5a3418"), INK, 4, 10)
+	draw_rect(r, Color("f0deb0"))
+	for k in 6:
+		var g := r.grow(-k * 6.0)
+		draw_rect(g, Color(0.45, 0.28, 0.1, 0.05), false, 12.0)
+	var seed := int(r.position.x) * 7 + int(r.position.y)
+	for k in 3:
+		var c := r.position + Vector2(fposmod(sin(seed + k * 3.1) * 999.0, r.size.x), fposmod(sin(seed + k * 7.7) * 777.0, r.size.y))
+		draw_arc(c, 30 + k * 12, 0, TAU, 24, Color(0.5, 0.3, 0.1, 0.07), 6.0, true)
+
+
+func _ink(s: String, at: Vector2, size: int, align := HORIZONTAL_ALIGNMENT_LEFT, title := false, col := Color("3a2414")) -> void:
+	_text(s, at, size, col, 0, align, book_title_font if title else book_font)
+
+
+func _wrap_book(s: String, size: int, width: float) -> String:
+	var out := []
+	for para in s.split("\n"):
+		var line := ""
+		for word in para.split(" "):
+			var trial := word if line == "" else line + " " + word
+			if book_font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width and line != "":
+				out.append(line)
+				line = word
+			else:
+				line = trial
+		out.append(line)
+	return "\n".join(out)
+
+
+## A sepia picture from the album, or the drawn icon if it hasn't been taken yet
+func _picture(name: String, c: Vector2, s: float, fallback := {}) -> void:
+	var pic: Texture2D = shop.album.pics.get(name) if shop.album != null else null
+	if pic != null:
+		draw_texture_rect(pic, Rect2(c - Vector2(s, s) * 0.5, Vector2(s, s)), false)
+	elif not fallback.is_empty():
+		Icons.step(self, fallback, c, s * 0.7)
+
+
+func _step_picture(st: Dictionary, c: Vector2, s: float) -> void:
+	match st.kind:
+		Book.ADD:
+			_picture(Hut.INGREDIENT_MODELS[st.what], c, s, st)
+		Book.HEAT:
+			_picture("bellows", c, s, st)
+		Book.STIR:
+			_picture("stick", c, s, st)
+		Book.ZAP:
+			_picture("wand", c, s, st)
+		_:
+			_picture("potion", c, s, st)
+
+
+func _old_page(r: Rect2, page: Dictionary, number: int) -> void:
+	_paper(r)
+	var x := r.position.x + 34
+	var wide := r.size.x - 68
+	var y := r.position.y + 50
+	match page.kind:
+		"index":
+			_ink("Grumblewart's", Vector2(r.get_center().x, y), 30, HORIZONTAL_ALIGNMENT_CENTER, true)
+			_ink("Booke of Receipts", Vector2(r.get_center().x, y + 44), 40, HORIZONTAL_ALIGNMENT_CENTER, true)
+			draw_line(Vector2(x + 40, y + 78), Vector2(x + wide - 40, y + 78), Color(0.23, 0.14, 0.08, 0.6), 2)
+			y += 110
+			var pages := _book_pages()
+			var line_h := minf(46.0, (r.end.y - y - 40) / maxf(pages.size() - 1, 1))
+			var size := int(clampf(line_h * 0.55, 18, 26))
+			for i in range(1, pages.size()):
+				var p: Dictionary = pages[i]
+				var label := ""
+				match p.kind:
+					"craft":
+						label = "Of the Craft"
+					"ingredients":
+						label = "Of the Ingredients"
+					"potion":
+						label = Book.POTIONS[p.potion].name
+					"found":
+						label = "Found by Brewing"
+				if p.kind == "found" and p.from > 0:
+					continue
+				var row := Rect2(x, y - line_h * 0.5, wide, line_h)
+				buttons_book["page%d" % i] = row
+				var want: bool = not shop.selected_order().is_empty() and p.kind == "potion" and p.potion == shop.selected_order().potion
+				if want:
+					draw_rect(row, Color(0.9, 0.7, 0.3, 0.35))
+				_ink(label, Vector2(x, y), size)
+				_ink(str(i + 1), Vector2(x + wide, y), size, HORIZONTAL_ALIGNMENT_RIGHT)
+				y += line_h
+		"craft":
+			_ink("Of the Craft", Vector2(r.get_center().x, y), 34, HORIZONTAL_ALIGNMENT_CENTER, true)
+			_picture("cauldron", Vector2(r.get_center().x, y + 125), 230)
+			var verse := "The first thing in is the root of it all;\nthe next may twist it, great or small.\n\nWarm, hot or roaring, the fire gives might;\nturn widdershins, and the wrong comes right.\n\nWhat's airy or ghostly must feel the wand,\nor off it flies to the world beyond.\n\nNo fire at all, and naught will take,\nsave what was born of the dragon's lake."
+			_ink(_wrap_book(verse, 22, wide), Vector2(x, y + 230 + 22 * 12 * 0.5), 22)
+		"ingredients":
+			_ink("Of the Ingredients", Vector2(r.get_center().x, y), 34, HORIZONTAL_ALIGNMENT_CENTER, true)
+			var cell := Vector2(wide * 0.5, (r.end.y - y - 50) / 4.0)
+			for i in 8:
+				var c := Vector2(x + cell.x * (i % 2) + cell.x * 0.28, y + 30 + cell.y * (i / 2) + cell.y * 0.5)
+				_picture(Hut.INGREDIENT_MODELS[i], c, minf(cell.y * 0.9, 120.0))
+				var nat: Dictionary = Lore.NATURE[i]
+				_ink(Book.INGREDIENTS[i].name, c + Vector2(cell.x * 0.24, -14), 20)
+				_ink("%s; for %s" % [nat.element, nat.virtue], c + Vector2(cell.x * 0.24, 14), 17, HORIZONTAL_ALIGNMENT_LEFT, false, Color("6a4a2a"))
+		"potion":
+			var pot: Dictionary = Book.POTIONS[page.potion]
+			_ink(pot.name, Vector2(r.get_center().x, y), 34, HORIZONTAL_ALIGNMENT_CENTER, true)
+			var steps := Book.steps_of(pot.recipe)
+			_picture(Hut.INGREDIENT_MODELS[steps[0].what], Vector2(r.get_center().x, y + 118), 220)
+			var about := _wrap_book(pot.about, 21, wide)
+			var lines := about.split("\n").size()
+			_ink(about, Vector2(x, y + 225 + lines * 21 * 1.12 * 0.5), 21)
+			y += 245 + lines * 24
+			_ink("Take:", Vector2(x, y), 24, HORIZONTAL_ALIGNMENT_LEFT, true)
+			y += 44
+			var row_h := minf(62.0, (r.end.y - y - 30) / steps.size())
+			for st: Dictionary in steps:
+				_step_picture(st, Vector2(x + row_h * 0.5, y), row_h * 0.95)
+				_ink(Book.old_words(st), Vector2(x + row_h + 14, y), int(clampf(row_h * 0.38, 17, 23)))
+				y += row_h
+		"found":
+			_ink("Found by Brewing", Vector2(r.get_center().x, y), 32, HORIZONTAL_ALIGNMENT_CENTER, true)
+			y += 56
+			var found: Array = shop.discoveries.keys()
+			if found.is_empty():
+				_ink(_wrap_book("Nothing yet. Brew freely, and send what you make up the tower to be tried: whatever it does will be written here.", 21, wide), Vector2(x, y + 60), 21)
+			for k in range(page.from, mini(page.from + 4, found.size())):
+				var d: Dictionary = shop.discoveries[found[k]]
+				_ink(d.name, Vector2(x, y), 23, HORIZONTAL_ALIGNMENT_LEFT, true)
+				var words := []
+				for st: Dictionary in d.steps:
+					words.append(Book.old_words(st))
+				var txt := _wrap_book(", ".join(words) + ".", 18, wide)
+				var n := txt.split("\n").size()
+				_ink(txt, Vector2(x, y + 30 + (n - 1) * 18 * 0.56), 18, HORIZONTAL_ALIGNMENT_LEFT, false, Color("6a4a2a"))
+				y += 60 + n * 21
+	_ink(str(number + 1), Vector2(r.get_center().x, r.end.y - 22), 18, HORIZONTAL_ALIGNMENT_CENTER)
+
 func _draw_tower() -> void:
 	var w := size_now.x
 	var h := size_now.y
@@ -708,3 +879,25 @@ func _draw_tower() -> void:
 		_text("New! Written in your book.", Vector2(r.get_center().x, r.position.y + 226), 24, Color("3a8a2a"), 0)
 	var pulse := 1.0 + sin(_t * 5.0) * 0.04
 	_text("Tap to brew another", Vector2(r.get_center().x, r.end.y - 22), int(24 * pulse), Color("8a6a4a"), 0)
+
+
+func _book_tap(at: Vector2) -> void:
+	for id: String in buttons_book:
+		if not (buttons_book[id] as Rect2).has_point(at):
+			continue
+		Sfx.play("tap", 0.8)
+		if id == "close":
+			shop.toggle_book()
+		elif id == "prev":
+			book_page = maxi(0, book_page - (1 if tall else 2))
+		elif id == "next":
+			book_page = mini(_book_pages().size() - 1, book_page + (1 if tall else 2))
+		elif id.begins_with("page"):
+			book_page = int(id.substr(4))
+		return
+	# A tap on the right of the page turns on; on the left, back
+	if at.x > size_now.x * 0.5:
+		book_page = mini(_book_pages().size() - 1, book_page + (1 if tall else 2))
+	else:
+		book_page = maxi(0, book_page - (1 if tall else 2))
+	Sfx.play("tap", 0.7)

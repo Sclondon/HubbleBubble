@@ -54,7 +54,7 @@ func _run() -> void:
 	main._new_order()
 	await _frames(40)
 	main.heat = 55.0
-	main.progress = 1
+	main.brew = [{"kind": Book.ADD, "what": 0}]
 	await _frames(30)
 	await _shot("brewing")
 	if only == "witch":
@@ -78,6 +78,15 @@ func _run() -> void:
 	main.toggle_book()
 	await _frames(5)
 	await _shot("book")
+	main.hud.book_page = 3
+	await _frames(3)
+	await _shot("book_potion")
+	main.hud.book_page = 2
+	await _frames(3)
+	await _shot("book_ingredients")
+	main.hud.book_page = 1
+	await _frames(3)
+	await _shot("book_craft")
 	main.toggle_book()
 	main.state = "done"
 	main.intro_t = 2.0
@@ -87,7 +96,7 @@ func _run() -> void:
 
 
 func _shot(name: String) -> void:
-	if only != "" and only != name and not (only == "react" and name.begins_with("react")):
+	if only != "" and only != name and not (only == "react" and name.begins_with("react")) and not (only == "book" and name.begins_with("book")):
 		return
 	await _frames(3)
 	var img := root.get_texture().get_image()

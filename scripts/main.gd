@@ -62,6 +62,7 @@ var view: SubViewport
 var screen: TextureRect
 var n64 := true
 var hud: Hud
+var album: Album
 var sfx: Sfx
 
 var _spawn_t := 0.0
@@ -128,6 +129,9 @@ func _ready() -> void:
 	hud.shop = self
 	hud.name = "hud"
 	layer.add_child(hud)
+	album = Album.new()
+	album.name = "album"
+	add_child(album)
 	get_viewport().size_changed.connect(_frame)
 	_load()
 	_frame()
@@ -382,6 +386,8 @@ func quit_to_title() -> void:
 
 func toggle_book() -> void:
 	book_open = not book_open
+	if book_open:
+		hud.book_page = 0
 	if book_open and not selected_order().is_empty():
 		selected_order().looked = true
 	Sfx.play("tap")
