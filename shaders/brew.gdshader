@@ -23,6 +23,11 @@ uniform float murk = 0.0;
 uniform float flash = 0.0;
 // How fast it's going round (radians a second, either way)
 uniform float vortex = 0.0;
+// Things in the brew, as Salmon Run 2's water draws round its fish: x, z, how wide it is where it
+// meets the surface, and how much it's bobbing (more froth). Each gets a ragged collar of foam with
+// the brew pushed up into a little lip round it, and a shadow of it under the surface.
+uniform vec4 bodies[10];
+uniform int body_count = 0;
 uniform float clock = 0.0;
 uniform sampler2D waves : filter_linear, repeat_disable;
 // As scripts/waves.gd writes them
@@ -151,12 +156,32 @@ void fragment() {
 	float steep = length(slope);
 	white = max(white, cut(w.x * (0.6 + 0.8 * n), 0.02) * 0.8);
 	white = max(white, cut(steep * (0.5 + n), 0.85) * 0.5);
+	// A collar of foam round everything in it, ragged and churning, the brew dark just inside
+	float collar = 0.0;
+	float under = 0.0;
+	for (int i = 0; i < body_count; i++) {
+		vec4 b = bodies[i];
+		float d = distance(p, b.xy);
+		float r = b.z;
+		float rag = (vnoise(vec2(atan(p.y - b.y, p.x - b.x) * 3.0 + t * 2.0, t * 1.5 + float(i) * 7.0)) - 0.5) * r * 0.6;
+		float band = 0.035 + r * 0.45 + b.w * 0.03;
+		collar = max(collar, smoothstep(r - 0.01, r + 0.004, d + rag * 0.4) * (1.0 - smoothstep(r + band * 0.5, r + band, d + rag)));
+		under = max(under, 1.0 - smoothstep(r * 0.6, r * 1.05, d));
+		// a second, broken ring standing off it
+		float off = abs(d - (r + band * 1.9 + sin(t * 3.0 + float(i)) * 0.01));
+		collar = max(collar, (1.0 - smoothstep(0.004, 0.012, off)) * step(0.55, n) * 0.8);
+	}
+	colour *= 1.0 - under * 0.35;
+	float collar_white = cut(collar, 0.5);
+	white = max(white, collar_white);
 	// The wake and splashes leave foam
 	white = max(white, cut(w.a * (0.6 + 0.6 * n), 0.45) * 0.85);
 	// The boil throws up foam in patches
 	white = max(white, cut(vnoise(q * 9.0 + t * 2.0) * boil, 0.55) * 0.7);
 	colour = mix(colour, mix(colour, foam, 0.45), line * (1.0 - white));
 	colour = mix(colour, foam, white * 0.9);
+	// (the collars a clean white, whatever the brew, so they always show)
+	colour = mix(colour, mix(foam, vec3(1.0), 0.7), collar_white);
 	colour += foam * smoothstep(0.08, 0.6, steep) * 0.18;
 	colour = mix(colour, vec3(0.2, 0.15, 0.09) * (0.7 + 0.5 * n), murk);
 	// Shaded by its own slopes against a light from above and behind (so the waves always show), and
@@ -167,7 +192,7 @@ void fragment() {
 	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 28.0) * (1.0 - murk) * (1.0 - white);
 	colour = colour * shade + foam * gleam * 0.55;
 	ALBEDO = colour;
-	EMISSION = (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
+	EMISSION = vec3(0.35) * collar_white + (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 	vec2 g = q / 0.05;

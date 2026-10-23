@@ -703,6 +703,7 @@ func _animate_stick(dt: float) -> void:
 	stick.global_position = global_transform * top
 	stick.look_at(global_transform * dip, Vector3(out.x, 0.0, out.z) if out.length() > 0.1 else Vector3.BACK)
 	var speed := (_tip - was).length() / maxf(dt, 0.001)
+	brew.stick_in = Vector3(_tip.x, _tip.z, clampf(0.3 + speed, 0.3, 1.5))
 	if speed > 0.05:
 		brew.wake(Vector2(_tip.x, _tip.z), speed)
 	# Going round the middle sets the brew going round

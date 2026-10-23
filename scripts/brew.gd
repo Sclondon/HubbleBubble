@@ -25,6 +25,8 @@ var current := 0.0
 var cooking := 0.0
 
 var _floaters: Array[Dictionary] = []
+## Where the stick cuts the surface (x, z) and how hard it's going (0: not in it)
+var stick_in := Vector3.ZERO
 
 var _target: PotionLook = look
 var _mat: ShaderMaterial
@@ -342,7 +344,24 @@ func clear_floaters() -> void:
 	cooking = 0.0
 
 
+## Tells the surface where things sit in it, for their collars of foam (the floaters, and the stick)
+func _send_bodies() -> void:
+	var list: Array[Vector4] = []
+	for f in _floaters:
+		if f.gone < 0.0:
+			list.append(Vector4(f.at.x, f.at.y, 0.085, 1.0 if cooking > 0.0 else 0.3))
+	if stick_in.z > 0.0:
+		list.append(Vector4(stick_in.x, stick_in.y, 0.03, stick_in.z))
+	var n := list.size()
+	var packed := PackedVector4Array()
+	for i in 10:
+		packed.append(list[i] if i < n else Vector4.ZERO)
+	_mat.set_shader_parameter("bodies", packed)
+	_mat.set_shader_parameter("body_count", mini(n, 10))
+
+
 func _tend_floaters(dt: float) -> void:
+	_send_bodies()
 	if cooking > 0.0:
 		cooking -= dt
 		if cooking <= 0.0:
@@ -390,7 +409,7 @@ func _tend_floaters(dt: float) -> void:
 		var y: float = _waves.height_at(f.at) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5) - f.sink
 		var jig := 0.12 + 0.1 * heat + shake * 0.45
 		var hop := shake * absf(sin(t * 19.0 + f.phase)) * 0.07
-		node.position = Vector3(f.at.x, y - 0.045 + sin(t * 2.6 + f.phase) * 0.012 + hop, f.at.y)
+		node.position = Vector3(f.at.x, y - 0.1 + sin(t * 2.6 + f.phase) * 0.012 + hop, f.at.y)
 		if randf() < dt * 4.0:
 			_waves.foam(f.at, 0.25, 0.06)
 		node.rotation = Vector3(sin(t * 7.0 + f.phase) * jig, node.rotation.y + dt * (f.spin + current * 0.6), sin(t * 6.1 + f.phase * 2.0) * jig)

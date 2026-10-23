@@ -45,6 +45,25 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
 		quit()
 		return
+	if only == "floaters":
+		# Close over the brew with three things floating in it, settled
+		main.start_free()
+		await _frames(5)
+		main.heat = 10.0
+		for w in [0, 1, 3]:
+			main.add(w)
+			await _frames(40)
+		await create_timer(3.0).timeout
+		for n: String in ["clouds", "streamers", "tendrils", "shapes"]:
+			main.hut.brew.get_node(n).visible = false
+		main.set_process(false)
+		main.camera.position = Vector3(0.0, 2.35, 1.35)
+		main.camera.look_at(Vector3(0, Hut.BREW_LEVEL, 0))
+		main.smoke_camera.global_transform = main.camera.global_transform
+		await _frames(4)
+		root.get_texture().get_image().save_png("%s/floaters.png" % out)
+		quit()
+		return
 	if only == "bookfloat":
 		main.hud.book_page = main.hud.book_page_of(0)
 		main.show_book_pages()
