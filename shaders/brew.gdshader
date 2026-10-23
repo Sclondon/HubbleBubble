@@ -31,6 +31,24 @@ uniform float vortex = 0.0;
 // the brew pushed up into a little lip round it, and a shadow of it under the surface.
 uniform vec4 bodies[10];
 uniform int body_count = 0;
+// The rim of foam round anything that breaks the surface, as Salmon Run 2's water does it: a hard
+// white band wherever the brew is only this deep over whatever's under it (read from the depth
+// buffer), with a ragged outer edge. It hugs the real shape of each thing floating in it, the stick,
+// and the iron all round.
+uniform sampler2D depth_texture : hint_depth_texture, filter_nearest, repeat_disable;
+uniform float rim_width = 0.06;
+uniform float rim_ragged = 0.6;
+
+// Distance from the camera of a depth-buffer value at a point on screen
+float view_depth(vec2 screen_uv, float d, mat4 inv_projection) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec3 ndc = vec3(screen_uv, d) * 2.0 - 1.0;
+#else
+	vec3 ndc = vec3(screen_uv * 2.0 - 1.0, d);
+#endif
+	vec4 view = inv_projection * vec4(ndc, 1.0);
+	return -view.z / view.w;
+}
 uniform float clock = 0.0;
 uniform sampler2D waves : filter_linear, repeat_disable;
 // As scripts/waves.gd writes them
@@ -178,7 +196,12 @@ void fragment() {
 		collar = max(collar, (1.0 - smoothstep(0.004, 0.012, off)) * step(0.55, n) * 0.8);
 	}
 	colour *= 1.0 - under * 0.35;
-	float collar_white = cut(collar, 0.5);
+	// the depth-buffer rim
+	float behind = view_depth(SCREEN_UV, texture(depth_texture, SCREEN_UV).r, INV_PROJECTION_MATRIX);
+	float here = view_depth(SCREEN_UV, FRAGCOORD.z, INV_PROJECTION_MATRIX);
+	float thick = max(behind - here, 0.0);
+	float rag = vnoise(p * 38.0 + vec2(t * 0.8, -t * 0.6));
+	float collar_white = step(thick, rim_width * (1.0 - rim_ragged * 0.8 * (1.0 - rag)));
 	white = max(white, collar_white);
 	// The wake and splashes leave foam
 	white = max(white, cut(w.a * (0.6 + 0.6 * n), 0.45) * 0.85);

@@ -128,8 +128,9 @@ func _process(dt: float) -> void:
 	# The fire leaps with the heat (and flares when something fiery goes in)
 	var h := heat / 100.0
 	_flare = maxf(0.0, _flare - dt * 1.5)
-	fire.intensity = 0.6 + h * 0.9 + _flare * 0.4
-	fire.light_energy = 2.0 + h * 3.5 + _flare * 2.0
+	# (eased toward the heat, so the bellows build it up rather than make it jump)
+	fire.intensity = lerpf(fire.intensity, 0.6 + h * 0.9 + _flare * 0.3, minf(1.0, dt * 2.0))
+	fire.light_energy = lerpf(fire.light_energy, 2.0 + h * 2.5 + _flare * 1.0, minf(1.0, dt * 2.0))
 	brew.heat = h
 	# The pages take the potion's light (lit by it, as everything is, but always readable)
 	var page_lit := Color.WHITE.lerp(brew.look.light_colour, 0.35) * (0.45 + 0.45 * brew.light_now())

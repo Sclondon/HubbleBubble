@@ -32,6 +32,7 @@ var _spark_due := 0.0
 ## Where the last puff of the bellows came from (a direction along the ground), and how much is left of it
 var _blow_dir := Vector3.ZERO
 var _blow := 0.0
+var _k := 1.0
 
 
 func _ready() -> void:
@@ -171,7 +172,8 @@ func _add_spark(burst := false) -> void:
 
 func _process(dt: float) -> void:
 	_t += dt
-	var k := clampf(intensity + _blow * 0.25, 0.2, 2.2)
+	_k = lerpf(_k, clampf(intensity + _blow * 0.15, 0.2, 2.2), minf(1.0, dt * 2.5))
+	var k := _k
 	_blow = maxf(0.0, _blow - dt * 2.0)
 	# Flames: born round the bed, swelling and rising, leaning away from the bellows and lapping up
 	# round the iron
@@ -242,10 +244,11 @@ func _process(dt: float) -> void:
 		shown += 1
 	_bits.visible_instance_count = shown
 	# The light flickers (a few slow waves and a fast shiver), brighter with the heat and the bellows
-	var flick := 0.78 + 0.12 * sin(_t * 7.3) + 0.07 * sin(_t * 13.1 + 1.7) + 0.05 * sin(_t * 23.0)
+	# a gentle, slow flicker
+	var flick := 0.9 + 0.06 * sin(_t * 3.1) + 0.03 * sin(_t * 7.7 + 1.7) + 0.015 * sin(_t * 13.0)
 	_light.light_energy = light_energy * flick * (0.6 + 0.4 * k)
 	# (out in front of the pot, low, so it lights the iron and throws the pot's shadow up the wall behind)
-	_light.position = Vector3(0.05 * sin(_t * 5.0), 0.2 + 0.04 * sin(_t * 9.0), 1.35)
+	_light.position = Vector3(0.03 * sin(_t * 1.7), 0.2 + 0.02 * sin(_t * 2.9), 1.35)
 	_glow_mat.set_shader_parameter("strength", (0.35 + 0.25 * k) * flick)
 	for m in _skirts:
 		m.set_shader_parameter("clock", _t * (0.8 + 0.3 * k))
