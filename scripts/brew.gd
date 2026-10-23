@@ -248,7 +248,7 @@ func droplets(at: Vector3, count: int, speed := 1.2) -> void:
 			_drop_list.remove_at(0)
 		var r := randf()
 		var kind := "blob" if r < 0.3 else ("dot" if r < 0.6 else ("foam" if r < 0.82 else "bubble"))
-		var size: float = {"blob": randf_range(0.022, 0.034), "dot": randf_range(0.007, 0.012), "foam": randf_range(0.015, 0.026), "bubble": randf_range(0.02, 0.035)}[kind]
+		var size: float = {"blob": randf_range(0.01, 0.017), "dot": randf_range(0.005, 0.009), "foam": randf_range(0.012, 0.02), "bubble": randf_range(0.015, 0.025)}[kind]
 		var go: float = speed * randf_range(0.5, 1.15) * (0.6 if kind == "bubble" else (1.2 if kind == "dot" else 1.0))
 		var dir := Vector3(randf_range(-0.6, 0.6), 1.0, randf_range(-0.6, 0.6)).normalized()
 		var c: Color = col if kind != "foam" else look.foam.lerp(Color.WHITE, 0.6)
@@ -488,7 +488,7 @@ func water_drop(at: Vector3) -> void:
 	for i in 2:
 		if _drop_list.size() >= 48:
 			_drop_list.remove_at(0)
-		_drop_list.append({"at": at + Vector3(randf_range(-0.02, 0.02), 0, randf_range(-0.02, 0.02)), "vel": Vector3(0, -0.5, 0), "col": Color(0.55, 0.75, 0.7), "size": randf_range(0.02, 0.032), "kind": "blob", "t": 0.0, "spin": 0.0})
+		_drop_list.append({"at": at + Vector3(randf_range(-0.02, 0.02), 0, randf_range(-0.02, 0.02)), "vel": Vector3(0, -0.5, 0), "col": Color(0.55, 0.75, 0.7), "size": randf_range(0.01, 0.016), "kind": "blob", "t": 0.0, "spin": 0.0})
 	_waves.foam(Vector2(at.x, at.z), 0.3, 0.06)
 
 
@@ -498,7 +498,7 @@ func pour_drop(at: Vector3) -> void:
 		return
 	if _drop_list.size() >= 48:
 		_drop_list.remove_at(0)
-	_drop_list.append({"at": at, "vel": Vector3(randf_range(-0.05, 0.05), -0.2, 0.25), "col": look.liquid, "size": randf_range(0.018, 0.03), "kind": "blob", "t": 0.0, "spin": 0.0})
+	_drop_list.append({"at": at, "vel": Vector3(randf_range(-0.05, 0.05), -0.2, 0.25), "col": look.liquid, "size": randf_range(0.01, 0.016), "kind": "blob", "t": 0.0, "spin": 0.0})
 
 
 ## How bright its light is now (0 to about 1): for the little lights on the shelf to follow
