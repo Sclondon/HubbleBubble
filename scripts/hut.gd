@@ -185,7 +185,11 @@ func set_brew(col: Color, murky := false, effect := "") -> void:
 func fresh() -> void:
 	brew.murk = 0.0
 	brew.clear_floaters()
-	brew.set_look(PotionLook.from_colour(Book.WATER), true)
+	# Swamp water: murky green, with a faint glow of its own
+	var water := PotionLook.from_colour(Book.WATER)
+	water.glow = 0.55
+	water.light_energy = 1.6
+	brew.set_look(water, true)
 
 
 ## Where the moon is, 0 at the start of the night to 1 at the end

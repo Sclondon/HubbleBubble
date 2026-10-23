@@ -1137,12 +1137,12 @@ def build_props():
     # Bat wing: a whole little dried bat pinned out on a board, both wings spread, so it reads at a
     # glance: scalloped leathery wings on their finger bones, a furry body, big pointed ears
     ing = []
-    board = box("wing_board", (0, 0.05, 0.22), (0.5, 0.03, 0.34), bevel=0.01, rot=Matrix.Rotation(-0.25, 3, "X"))
-    paint(board, lit(plain("#8a5228")))
+    board = box("wing_board", (0, 0.05, 0.24), (0.62, 0.03, 0.4), bevel=0.01, rot=Matrix.Rotation(-0.25, 3, "X"))
+    paint(board, lit(plain("#e0c08a")))
     leg_b = box("wing_board_foot", (0, 0.1, 0.03), (0.3, 0.12, 0.05), bevel=0.01)
     paint(leg_b, lit(plain("#6b3e22")))
     ing += [board, leg_b]
-    tilt = Matrix.Translation((0, 0.02, 0.24)) @ Matrix.Rotation(math.pi / 2 - 0.25, 4, "X")
+    tilt = Matrix.Translation((0, 0.0, 0.26)) @ Matrix.Rotation(math.pi / 2 - 0.25, 4, "X") @ Matrix.Diagonal((1.25, 1.25, 1.25, 1.0))
     for sgn in (1, -1):
         # the wing's edge: from the shoulder out along the top to the wrist, then scallops between
         # the finger tips back down to the body
@@ -1159,12 +1159,12 @@ def build_props():
             outline.reverse()
         memb = flat("wing_membrane", outline, 0.01, (0, 0, 0), None, sub=1)
         memb.data.transform(tilt)
-        paint(memb, lambda co, n: lin("#5a3a7a").lerp(lin("#2a1a3a"), 0.5))
+        paint(memb, lambda co, n: lin("#a070e8").lerp(lin("#6a3ab0"), 0.4))
         ing.append(memb)
         for t in tips + [(0.22, 0.08)]:
             bone_ = tube("wing_bone", (sgn * 0.12, 0.09, 0.0), (sgn * t[0], t[1], 0.0), 0.007, 0.004, seg=5)
             bone_.data.transform(tilt)
-            paint(bone_, lambda co, n: lin("#1a1024"))
+            paint(bone_, lambda co, n: lin("#f0e0ff"))
             ing.append(bone_)
     body = egg("bat_body", (0, 0, 0), (0.045, 0.03, 0.08), seg=10, rings=7, sub=1)
     body.data.transform(tilt)
