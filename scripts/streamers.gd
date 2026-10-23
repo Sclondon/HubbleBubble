@@ -7,7 +7,7 @@ extends MeshInstance3D
 ## streamers start from (the middle of the brew's surface).
 
 const MAX := 30
-const SEGMENTS := 18
+const SEGMENTS := 28
 
 var _all: Array[Dictionary] = []
 var _mesh := ImmediateMesh.new()
@@ -29,7 +29,7 @@ func add(at: Vector3, col: Color, lively := 0.0, width := 1.0) -> void:
 	_all.append({"at": at, "col": col, "t": 0.0, "life": randf_range(2.6, 3.6) * (1.0 - lively * 0.35),
 			"rise": randf_range(0.6, 0.8) * (1.0 + lively * 0.8), "turns": randf_range(1.2, 2.0) * (1.0 + lively * 0.5),
 			"phase": randf() * TAU, "wide": randf_range(0.06, 0.1) * (1.0 + lively * 0.6), "curl": randf_range(0.8, 1.4) * (1.0 if randf() < 0.5 else -1.0),
-			"width": randf_range(0.028, 0.042) * width, "drift": Vector3(randf_range(-0.08, 0.08), 0, randf_range(-0.08, 0.08))})
+			"width": randf_range(0.04, 0.058) * width, "drift": Vector3(randf_range(-0.08, 0.08), 0, randf_range(-0.08, 0.08))})
 
 
 func count() -> int:

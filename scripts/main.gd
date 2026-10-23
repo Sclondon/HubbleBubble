@@ -12,7 +12,7 @@ const BOIL_TIME := 1.2
 const KEY_STIR_SPEED := TAU * 1.4
 ## The most things a pot holds before it's too full
 const MAX_STEPS := 8
-const N64_LINES := 270.0
+const N64_LINES := 228.0
 
 ## "play" (at the cauldron), "intro", "done", "over" (the cards of a night), "swamp", "tower" (the balcony)
 var state := "play"
@@ -68,10 +68,13 @@ var swamp_t := 0.0
 var tower_result := {}
 var tower_new := false
 var tower_t := 0.0
-## The 3D, drawn small in here and blown up soft (the N64 filter), or full size with it off
+## The 3D, drawn small in here and blown up soft (the N64 filter, always on)
 var view: SubViewport
 var screen: TextureRect
 var n64 := true
+## The floating book's two pages, drawn by a second Hud into their own little picture
+var pages_view: SubViewport
+var pages_hud: Hud
 var hud: Hud
 var album: Album
 var sfx: Sfx
@@ -162,6 +165,16 @@ func _ready() -> void:
 	album = Album.new()
 	album.name = "album"
 	add_child(album)
+	pages_view = SubViewport.new()
+	pages_view.name = "pages"
+	pages_view.size = Vector2i(1100, 760)
+	pages_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(pages_view)
+	pages_hud = Hud.new()
+	pages_hud.shop = self
+	pages_hud.page_only = true
+	pages_view.add_child(pages_hud)
+	hut.set_book_pages(pages_view.get_texture())
 	get_viewport().size_changed.connect(_frame)
 	_load()
 	_frame()
@@ -171,9 +184,9 @@ func _ready() -> void:
 func _frame() -> void:
 	var s := get_viewport().get_visible_rect().size
 	# The N64 filter: the 3D is drawn this many lines on its short side, then blown up soft
-	var k := (N64_LINES / minf(s.x, s.y)) if n64 else 1.0
+	var k := N64_LINES / minf(s.x, s.y)
 	view.size = Vector2i(maxi(2, roundi(s.x * k)), maxi(2, roundi(s.y * k)))
-	(screen.material as ShaderMaterial).set_shader_parameter("amount", 1.0 if n64 else 0.0)
+	(screen.material as ShaderMaterial).set_shader_parameter("amount", 1.0)
 	(screen.material as ShaderMaterial).set_shader_parameter("size", Vector2(view.size))
 	var tall := s.y > s.x * 1.1
 	if state == "swamp":
@@ -195,16 +208,16 @@ func _frame() -> void:
 	elif tall:
 		# Phone: framed by width; you lean over the pot and look down into it, the counter beyond
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
-		camera.fov = 60.0
+		camera.fov = 44.0
 		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.5, 0.6)
-		camera.position = Vector3(0, 3.35 + spare * 0.3, 1.6 + spare * 0.45)
-		camera.look_at(Vector3(0, 1.1, -1.35))
+		camera.position = Vector3(0, 2.7 + spare * 0.2, 2.55 + spare * 0.5)
+		camera.look_at(Vector3(0, 1.45, -1.0))
 	else:
 		# Wide: framed by height, close enough that the walls either side don't take over
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
-		camera.fov = 60.0
-		camera.position = Vector3(0, 3.9, 3.4)
-		camera.look_at(Vector3(0, 1.36, -1.0))
+		camera.fov = 56.0
+		camera.position = Vector3(0, 2.95, 3.3)
+		camera.look_at(Vector3(0, 1.3, -1.0))
 	if hud != null:
 		hud.layout()
 
@@ -215,10 +228,10 @@ func _atmosphere() -> Environment:
 	e.background_mode = Environment.BG_COLOR
 	e.background_color = Color(0.03, 0.02, 0.05)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.3, 0.24, 0.42)
+	e.ambient_light_color = Color(0.42, 0.34, 0.56)
 	e.ambient_light_energy = 1.0
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 1.3
+	e.tonemap_exposure = 1.6
 	e.fog_enabled = true
 	e.fog_light_color = Color(0.1, 0.07, 0.16)
 	e.fog_density = 0.045
@@ -230,10 +243,12 @@ func _atmosphere() -> Environment:
 	return e
 
 
-func set_n64(on: bool) -> void:
-	n64 = on
-	_frame()
-	_save()
+## The floating book shows the pages it was left open at (redrawn when they change, and while
+## the book's pictures are still being taken)
+func show_book_pages() -> void:
+	pages_hud.page_shown = hud.book_page
+	pages_hud.queue_redraw()
+	pages_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func screen_of(p: Vector3) -> Vector2:
@@ -544,8 +559,8 @@ func toggle_pause() -> void:
 
 func toggle_book() -> void:
 	book_open = not book_open
-	if book_open:
-		hud.book_page = 0
+	if not book_open:
+		show_book_pages()
 	if book_open and not selected_order().is_empty():
 		selected_order().looked = true
 	Sfx.play("tap")
@@ -567,6 +582,8 @@ func _clear_customers() -> void:
 
 func _process(dt: float) -> void:
 	_boot_t += dt
+	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
+		show_book_pages()
 	_update_speech(dt)
 	if is_instance_valid(_held):
 		var to := _held_to
@@ -867,6 +884,8 @@ func _land(which: int, at: Vector3) -> void:
 		_float(c[3], screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.8, 0)), Color("ffe060"), true)
 		Sfx.play("zap", 0.7, -4.0)
 	hut.react(fx, ing.brew, strength, at)
+	# It stays bobbing on the brew till the fire cooks it
+	hut.brew.float_in(Hut.ONE_MODELS[which], at - Vector3(0, Hut.BREW_LEVEL, 0))
 	Sfx.play("plop", randf_range(0.9, 1.15))
 	_last_added = which
 	_added_count += 1
@@ -1011,6 +1030,10 @@ func _record(step: Dictionary) -> void:
 			return
 		brew.append(step.duplicate())
 	done_kinds[step.kind] = done_kinds.get(step.kind, 0) + 1
+	# Brought to heat, what's bobbing in it cooks (the pot rattles, a jingle, and it melts away)
+	if step.kind == Book.HEAT and hut.brew.floating() > 0:
+		hut.brew.cook()
+		Sfx.play("cook", 1.0, -2.0)
 	var r := Lore.resolve(brew)
 	hut.set_brew(r.colour, false, r.effect if r.effect != "nothing" else "")
 	hud.tick_step(brew.size() - 1)
@@ -1215,7 +1238,6 @@ func _load() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(save_path) == OK:
 		best = cfg.get_value("shop", "best", 0)
-		n64 = cfg.get_value("shop", "n64", true)
 		discoveries = cfg.get_value("shop", "discoveries", {})
 		stock = cfg.get_value("shop", "stock", stock)
 		Sfx.set_muted(not cfg.get_value("shop", "sound", true))
@@ -1225,7 +1247,6 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("shop", "best", best)
 	cfg.set_value("shop", "sound", not sfx.muted)
-	cfg.set_value("shop", "n64", n64)
 	cfg.set_value("shop", "discoveries", discoveries)
 	cfg.set_value("shop", "stock", stock)
 	cfg.save(save_path)

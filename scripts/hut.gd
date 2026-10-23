@@ -64,6 +64,13 @@ var _wand: Node3D
 var _flare := 0.0
 var _rng := RandomNumberGenerator.new()
 var _night_t := 0.0
+## The pot (rattles while it cooks), the thermometer's needle, the floating book and its pages
+var _pot: Node3D
+var _needle: Node3D
+var _book: Node3D
+var _book_home := Vector3.ZERO
+var _needle_angle := 0.0
+var _current_target := 0.0
 
 
 func _ready() -> void:
@@ -92,6 +99,28 @@ func _process(dt: float) -> void:
 	fire.intensity = 0.6 + h * 1.3 + _flare * 0.6
 	fire.light_energy = 2.0 + h * 3.5 + _flare * 2.0
 	brew.heat = h
+	var t := Time.get_ticks_msec() / 1000.0
+	# The thermometer's needle swings to the heat (a little behind, quivering when it's hot)
+	var want := deg_to_rad(-135.0 + 270.0 * clampf(heat, 0.0, 100.0) / 100.0)
+	_needle_angle = lerp_angle(_needle_angle, want, minf(1.0, dt * 6.0))
+	_needle.rotation.z = -(_needle_angle + sin(t * 31.0) * 0.03 * h * h)
+	# The pot rattles and jumps while it cooks
+	if brew.cooking > 0.0:
+		var k := minf(1.0, brew.cooking * 2.0)
+		_pot.position = Vector3(sin(t * 47.0) * 0.012, absf(sin(t * 19.0)) * 0.04, cos(t * 41.0) * 0.012) * k
+		_pot.rotation = Vector3(sin(t * 23.0) * 0.03, 0, cos(t * 27.0) * 0.03) * k
+	else:
+		_pot.position = _pot.position.lerp(Vector3.ZERO, minf(1.0, dt * 10.0))
+		_pot.rotation = _pot.rotation.lerp(Vector3.ZERO, minf(1.0, dt * 10.0))
+	# The current: set going by the stick, dying away slowly after (slower in a thin brew)
+	if stirring:
+		brew.current = lerpf(brew.current, _current_target, minf(1.0, dt * 2.5))
+	else:
+		brew.current *= exp(-dt * lerpf(0.5, 1.4, brew.look.thickness))
+	_current_target *= exp(-dt * 3.0)
+	# The book floats, turning a little
+	_book.position = _book_home + Vector3(0, sin(t * 1.3) * 0.04, 0)
+	_book.rotation.z = sin(t * 0.9) * 0.04
 
 
 ## The brew becomes what's in it: its look for the effect it's making, murky when spoilt
@@ -104,6 +133,7 @@ func set_brew(col: Color, murky := false, effect := "") -> void:
 ## Clean water again, at once
 func fresh() -> void:
 	brew.murk = 0.0
+	brew.clear_floaters()
 	brew.set_look(PotionLook.from_colour(Book.WATER), true)
 
 
@@ -406,7 +436,11 @@ func _bits() -> void:
 ## The fire pit and the pot (Blender models), the fire under it, and the brew
 func _cauldron() -> void:
 	add_child(Models.make("firepit"))
-	add_child(Models.make("cauldron"))
+	# The pot and what's in it move together (it rattles when something cooks)
+	_pot = Node3D.new()
+	_pot.name = "pot"
+	add_child(_pot)
+	_pot.add_child(Models.make("cauldron"))
 	fire = PotFire.new()
 	fire.name = "fire"
 	fire.position = Vector3(0, 0.06, 0)
@@ -414,7 +448,24 @@ func _cauldron() -> void:
 	brew = Brew.new()
 	brew.name = "brew"
 	brew.position = Vector3(0, BREW_LEVEL, 0)
-	add_child(brew)
+	_pot.add_child(brew)
+	# The thermometer clipped to the rim at the front left, its dial turned up to you
+	var thermo := Models.make("thermometer")
+	thermo.name = "thermometer"
+	thermo.position = Vector3(-0.78, 1.62, 0.3)
+	thermo.rotation = Vector3(-0.55, -0.9, 0)
+	thermo.scale = Vector3.ONE * 0.85
+	_pot.add_child(thermo)
+	_needle = Models.make("thermometer_needle")
+	thermo.add_child(_needle)
+	# Firewood stacked at the front left
+	var wood := Shape.new()
+	for k in 5:
+		var y := 0.1 + (k / 3) * 0.17
+		var x := -1.25 + (k % 3) * 0.2 + (0.1 if k >= 3 else 0.0)
+		wood.tube(Vector3(x, y, 0.55), Vector3(x + 0.05, y, 1.25), 0.09, 0.085, Color("7a4a2a"), Color("5a3418"), 8)
+		wood.disc(Vector3(x + 0.05, y, 1.26), Vector2(0.085, 0.085), Color("c89a6a"), 8, Basis(Vector3.RIGHT, PI * 0.5), Color("a87a4a"))
+	add_child(wood.piece("firewood"))
 
 
 ## Moonlight in through the window behind, cool, catching the customers' shoulders
@@ -474,16 +525,15 @@ func _shelf() -> void:
 	add_child(rack)
 	props["bottle"] = rack
 	spots["bottle"] = {"at": rack.position + Vector3(0, 0.18, 0), "r": 0.36}
-	var book := Models.make("book")
-	book.position = Vector3(-1.05, 0.0, 0.95)
-	book.rotation.y = 0.5
-	book.scale = Vector3.ONE * 1.4
-	add_child(book)
-	props["book"] = book
-	spots["book"] = {"at": book.position + Vector3(0, 0.25, 0), "r": 0.38}
+	_book = _floating_book()
+	_book_home = Vector3(SWAMP_HOLE.get_center().x + 0.15, 1.5, WALL_Z + 0.5)
+	_book.position = _book_home
+	add_child(_book)
+	props["book"] = _book
+	spots["book"] = {"at": _book_home, "r": 0.42}
 	var bellows := Node3D.new()
 	bellows.name = "bellows"
-	bellows.position = Vector3(1.05, 0.14, 0.95)
+	bellows.position = Vector3(0.66, 0.36, 0.98)
 	var d := (Vector3(0, 0, 0) - bellows.position).normalized()
 	bellows.rotation = Vector3(0, atan2(d.z, -d.x), 0.2)
 	bellows.scale = Vector3.ONE * 1.3
@@ -497,6 +547,54 @@ func _shelf() -> void:
 	stick = Models.make("stick")
 	stick.name = "stick"
 	add_child(stick)
+
+
+## The book, floating open under the back window: leather covers, and the two pages it was left
+## open at (drawn into a texture by the game: see set_book_pages)
+func _floating_book() -> Node3D:
+	var b := Node3D.new()
+	b.name = "book"
+	var holder := Node3D.new()
+	b.add_child(holder)
+	# Turned to face you, leaning back
+	holder.rotation = Vector3(-0.35, 0.3, 0)
+	var cover := Shape.new()
+	for sgn: float in [-1.0, 1.0]:
+		cover.box(Vector3(sgn * 0.3, 0, -0.02), Vector3(0.6, 0.78, 0.03), Color("6a2a3a"), Color("4a1a2a"), Basis(Vector3.UP, sgn * 0.18))
+	cover.box(Vector3(0, 0, -0.06), Vector3(0.06, 0.78, 0.06), Color("4a1a2a"), Color("3a1020"))
+	holder.add_child(cover.piece("cover"))
+	for i in 2:
+		var page := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(0.56, 0.74)
+		page.mesh = q
+		var sgn := -1.0 if i == 0 else 1.0
+		page.position = Vector3(sgn * 0.29, 0, 0.0)
+		page.rotation.y = sgn * 0.18
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(0.9, 0.82, 0.68)
+		m.uv1_scale = Vector3(0.5, 1, 1)
+		m.uv1_offset = Vector3(0.0 if i == 0 else 0.5, 0, 0)
+		page.material_override = m
+		page.name = "page%d" % i
+		holder.add_child(page)
+	# A little glow under it, as if it's held up by something
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.8, 0.7, 1.0)
+	glow.light_energy = 0.8
+	glow.omni_range = 1.4
+	glow.position = Vector3(0, -0.3, 0.3)
+	b.add_child(glow)
+	return b
+
+
+## What the floating book's pages show (a texture of two pages side by side)
+func set_book_pages(tex: Texture2D) -> void:
+	var holder := _book.get_child(0)
+	for i in 2:
+		var m: StandardMaterial3D = holder.get_node("page%d" % i).material_override
+		m.albedo_texture = tex
 
 
 ## Shows which jars are stocked tonight (the first `count`)
@@ -579,6 +677,10 @@ func _animate_stick(dt: float) -> void:
 	var speed := (_tip - was).length() / maxf(dt, 0.001)
 	if speed > 0.05:
 		brew.wake(Vector2(_tip.x, _tip.z), speed)
+	# Going round the middle sets the brew going round
+	if stirring and Vector2(_tip.x, _tip.z).length() > 0.12 and Vector2(was.x, was.z).length() > 0.12:
+		var turned := wrapf(Vector2(_tip.x, _tip.z).angle() - Vector2(was.x, was.z).angle(), -PI, PI)
+		_current_target = lerpf(_current_target, clampf(turned / maxf(dt, 0.001), -8.0, 8.0), minf(1.0, dt * 4.0))
 
 
 ## An ingredient thrown from its place on the shelf into the pot (a key, not a finger)

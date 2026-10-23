@@ -6,7 +6,7 @@ render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabl
 
 void fragment() {
 	float across = abs(UV.x * 2.0 - 1.0);
-	float soft = 1.0 - smoothstep(0.55, 1.0, across);
+	float soft = 1.0 - smoothstep(0.25, 1.0, across);
 	float ends = smoothstep(0.0, 0.12, UV.y) * (1.0 - smoothstep(0.85, 1.0, UV.y));
 	ALBEDO = COLOR.rgb;
 	ALPHA = soft * ends * COLOR.a;

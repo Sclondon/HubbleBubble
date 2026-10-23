@@ -1,14 +1,16 @@
 class_name Brew
 extends Node3D
 ## What's in the cauldron, alive: its surface (shaders/brew.gdshader, after GameCommon's water) on a
-## real wave pool (Waves) that the stick and everything dropped in disturb, bubbles that swell and
-## burst into rings, steam winding up in Wind Waker streamers, sparkles fizzing up, splashes
+## real wave pool (Waves) that the stick and everything dropped in disturb, a current when it's
+## stirred (it dips into a vortex and carries things round), what's been put in bobbing about on it
+## until the fire cooks it, bubbles that swell and burst into rings, steam winding up in Wind Waker
+## streamers, sparkles fizzing up, splashes
 ## when things go in (tiers of brew with ragged crests, rings and flung drops, after Salmon Run 2's),
 ## and the light it throws on the hut. How it all looks is a PotionLook; the brew eases from one
 ## look to the next. Stands at the middle of the surface.
 
 const RADIUS := 0.8
-const MAX_BUBBLES := 28
+const MAX_BUBBLES := 40
 const MAX_SPARKS := 48
 
 var look := PotionLook.from_colour(Book.WATER)
@@ -17,6 +19,12 @@ var heat := 0.0
 ## How far the stick has turned it, and how spoilt it is (0 to 1)
 var spin := 0.0
 var murk := 0.0
+## How fast it's going round (radians a second, + sunwise), from the stick
+var current := 0.0
+## Seconds left of the cooking (the pot rattling, what's in it jiggling, then gone)
+var cooking := 0.0
+
+var _floaters: Array[Dictionary] = []
 
 var _target: PotionLook = look
 var _mat: ShaderMaterial
@@ -84,7 +92,8 @@ func ripple(at: Vector2, power := 1.0) -> void:
 
 ## The stick drawn through the brew at a point (local x, z), going speed metres a second: a wake
 func wake(at: Vector2, speed: float) -> void:
-	_waves.push(at, clampf(0.0015 + speed * 0.0035, 0.0, 0.012), 0.045)
+	_waves.push(at, clampf(0.003 + speed * 0.006, 0.0, 0.02), 0.05)
+	_waves.foam(at, clampf(0.05 + speed * 0.12, 0.0, 0.35), 0.045)
 
 
 ## A splash where something dropped in (local), as big as `strength`
@@ -93,6 +102,7 @@ func splash(at: Vector3, strength := 1.0) -> void:
 	_next_splash = (_next_splash + 1) % _splashes.size()
 	sp.start(Vector3(at.x, 0.0, at.z), strength, look)
 	ripple(Vector2(at.x, at.z), 1.6 * strength)
+	_waves.foam(Vector2(at.x, at.z), 0.5, 0.09 * sqrt(strength))
 	_flash = maxf(_flash, 0.25 * strength)
 
 
@@ -134,6 +144,14 @@ func _process(dt: float) -> void:
 	_mat.set_shader_parameter("boil", clampf(heat * 1.3 - 0.2, 0.0, 1.0))
 	_mat.set_shader_parameter("murk", murk)
 	_mat.set_shader_parameter("flash", _flash)
+	_mat.set_shader_parameter("vortex", current)
+	# The boil pocks the surface all over
+	var boil := clampf(heat * 1.3 - 0.2, 0.0, 1.0)
+	if randf() < dt * boil * 30.0 * (1.0 - murk * 0.5):
+		var a := randf() * TAU
+		var r := sqrt(randf()) * 0.65
+		_waves.push(Vector2(cos(a), sin(a)) * r, -0.004 * (0.5 + boil), 0.04)
+	_tend_floaters(dt)
 	var flick := 0.88 + 0.12 * sin(_clock * 7.3) * sin(_clock * 3.1 + 1.0)
 	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
 	_light.light_energy = look.light_energy * (0.9 + heat * 1.4) * flick * (1.0 - murk * 0.6) + _flash * 3.0
@@ -143,6 +161,96 @@ func _process(dt: float) -> void:
 	_waves.speed = lerpf(0.34, 0.2, look.thickness)
 	_waves.update(dt)
 	_tend_sparks(dt)
+
+
+# --- what's been put in, bobbing about till it's cooked ---
+
+## Something dropped in (a model, at a point local to the surface) stays bobbing on it
+func float_in(model: String, at: Vector3) -> void:
+	var node := Models.make(model)
+	add_child(node)
+	var p := Vector2(at.x, at.z).limit_length(0.55)
+	_floaters.append({"node": node, "at": p, "vel": Vector2(randf_range(-0.2, 0.2), randf_range(-0.2, 0.2)),
+			"phase": randf() * TAU, "spin": randf_range(-1.0, 1.0), "sink": 0.12, "gone": -1.0})
+	node.position = Vector3(p.x, -0.12, p.y)
+
+
+## How many things are bobbing in it
+func floating() -> int:
+	return _floaters.size()
+
+
+## The fire's brought it to heat: the pot rattles, everything in it jiggles, then melts away
+func cook() -> void:
+	if _floaters.is_empty():
+		return
+	cooking = 1.7
+
+
+## Everything bobbing in it gone at once (tipped out, bottled, a fresh pot)
+func clear_floaters() -> void:
+	for f in _floaters:
+		if is_instance_valid(f.node):
+			f.node.queue_free()
+	_floaters.clear()
+	cooking = 0.0
+
+
+func _tend_floaters(dt: float) -> void:
+	if cooking > 0.0:
+		cooking -= dt
+		if cooking <= 0.0:
+			# Done: each one pops and melts into the brew
+			for f in _floaters:
+				f.gone = 0.0
+				var p: Vector2 = f.at
+				ripple(p, 0.9)
+				_waves.foam(p, 0.8, 0.1)
+				sparks(Vector3(p.x, 0, p.y), 6, look.sparkle_colour.lerp(look.foam, 0.5), 1.0)
+			flash(0.8)
+			bubble_burst(10, 1.6)
+	var shake := 1.0 if cooking > 0.0 else 0.0
+	var t := _clock
+	for i in range(_floaters.size() - 1, -1, -1):
+		var f := _floaters[i]
+		var node: Node3D = f.node
+		if f.gone >= 0.0:
+			f.gone += dt
+			var k: float = f.gone / 0.35
+			node.scale = Vector3.ONE * 1.3 * maxf(0.0, 1.0 - k) * (1.0 + 0.5 * sin(k * PI))
+			node.position.y -= dt * 0.3
+			if k >= 1.0:
+				node.queue_free()
+				_floaters.remove_at(i)
+			continue
+		var p: Vector2 = f.at
+		var r := p.length()
+		# Carried round by the current, wandering, kept off the iron and off one another
+		var round_v := Vector2(-p.y, p.x) * current * 0.9
+		var push := Vector2.ZERO
+		if r > 0.5:
+			push -= p.normalized() * (r - 0.5) * 6.0
+		for g in _floaters:
+			if g != f and g.gone < 0.0:
+				var d: Vector2 = p - g.at
+				var dl := d.length()
+				if dl < 0.16 and dl > 0.0001:
+					push += d / dl * (0.16 - dl) * 8.0
+		f.vel = (f.vel + (push + Vector2(sin(t * 0.7 + f.phase), cos(t * 0.6 + f.phase * 1.3)) * 0.05) * dt) * (1.0 - dt * 1.5)
+		f.at = (p + (f.vel + round_v) * dt).limit_length(0.6)
+		f.sink = move_toward(f.sink, 0.0, dt * 0.5)
+		# Bobbing on the waves (riding the vortex's dip), jiggling, and jiggling hard while it cooks
+		var rr: float = f.at.length() / RADIUS
+		var y: float = _waves.height_at(f.at) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5) - f.sink
+		var jig := 0.12 + 0.1 * heat + shake * 0.45
+		var hop := shake * absf(sin(t * 19.0 + f.phase)) * 0.07
+		node.position = Vector3(f.at.x, y + 0.01 + sin(t * 2.6 + f.phase) * 0.01 + hop, f.at.y)
+		node.rotation = Vector3(sin(t * 7.0 + f.phase) * jig, node.rotation.y + dt * (f.spin + current * 0.6), sin(t * 6.1 + f.phase * 2.0) * jig)
+		var sq := 1.0 + shake * 0.18 * sin(t * 24.0 + f.phase)
+		node.scale = Vector3(1.0 / sqrt(sq), sq, 1.0 / sqrt(sq)) * 1.3
+		# Bobbing, they set little rings going
+		if randf() < dt * (1.0 + shake * 6.0):
+			_waves.push(f.at, 0.0015 + shake * 0.0015, 0.05)
 
 
 # --- bubbles: swell, then burst into a ring ---
@@ -158,7 +266,7 @@ func _add_bubble(size_k := 1.0) -> void:
 
 
 func _tend_bubbles(dt: float) -> void:
-	_bubble_due += dt * look.bubbles * (0.4 + heat * 3.0) * (1.0 - murk * 0.7)
+	_bubble_due += dt * look.bubbles * (0.6 + heat * 5.0) * (1.0 - murk * 0.7)
 	while _bubble_due >= 1.0:
 		_bubble_due -= 1.0
 		_add_bubble()
@@ -171,6 +279,7 @@ func _tend_bubbles(dt: float) -> void:
 		if k >= 1.0:
 			# Pop: a ring, and now and then a drop or two
 			ripple(b.at, clampf(b.size * 6.0, 0.15, 0.8))
+			_waves.foam(b.at, 0.2, b.size)
 			if randf() < 0.3:
 				sparks(Vector3(b.at.x, 0, b.at.y), 2, look.bubble_colour, 0.8)
 			_b.remove_at(i)
@@ -274,7 +383,13 @@ func _multi(name: String, mesh: Mesh, shader: Shader, count: int) -> MultiMeshIn
 	return node
 
 
-## A disc of rings for the surface, fine enough to ripple
+## How far out the pot's sides are at an angle round it (local x, z), as a share of RADIUS: it's a
+## soft pentagon, a flat side to the front (as art/make_models.py makes the cauldron)
+static func pent(angle: float) -> float:
+	return 1.0 + 0.07 * cos(5.0 * (angle - deg_to_rad(54.0)))
+
+
+## A disc of rings for the surface, fine enough to ripple, in the pot's soft pentagon
 func _surface_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -286,8 +401,10 @@ func _surface_mesh() -> ArrayMesh:
 			var a1 := TAU * (j + 1) / seg
 			var r0 := RADIUS * float(i) / rings
 			var r1 := RADIUS * float(i + 1) / rings
-			var p := [Vector3(cos(a0) * r0, 0, sin(a0) * r0), Vector3(cos(a1) * r0, 0, sin(a1) * r0),
-					Vector3(cos(a1) * r1, 0, sin(a1) * r1), Vector3(cos(a0) * r1, 0, sin(a0) * r1)]
+			var k0 := pent(a0)
+			var k1 := pent(a1)
+			var p := [Vector3(cos(a0) * r0 * k0, 0, sin(a0) * r0 * k0), Vector3(cos(a1) * r0 * k1, 0, sin(a1) * r0 * k1),
+					Vector3(cos(a1) * r1 * k1, 0, sin(a1) * r1 * k1), Vector3(cos(a0) * r1 * k0, 0, sin(a0) * r1 * k0)]
 			for k: int in [0, 2, 1, 0, 3, 2]:
 				st.set_normal(Vector3.UP)
 				st.add_vertex(p[k])

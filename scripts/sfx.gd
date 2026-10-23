@@ -4,7 +4,7 @@ extends Node
 ## mumbling syllables, a few to every word, pitched to who's talking.
 
 const NAMES := ["plop", "bubble", "puff", "slosh", "zap", "blorp", "hiss", "cork", "coins", "tick", "tap",
-		"cheer", "huff", "night", "win", "lose"]
+		"cheer", "huff", "night", "win", "lose", "cook"]
 
 static var me: Sfx
 

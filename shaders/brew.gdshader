@@ -1,9 +1,10 @@
 shader_type spatial;
 // The brew's surface, after GameCommon's water: deeper and darker in the middle, a ragged rim of foam
-// lapping at the iron, pale lines wandering over it and swirling round with the stick, glints where
-// a light catches it, a slow heave (faster and rougher with the heat). Real waves on top of that:
-// the heights and slopes of the wave pool (scripts/waves.gd) come in `waves`, so the stick leaves a
-// wake and things dropped in send rings across; crests catch the light and froth white.
+// lapping at the iron, faint pale lines, glints where a light catches it, a heave that gets rougher
+// and more bubbly with the heat. Real waves on top of that: the heights, slopes and foam of the wave
+// pool (scripts/waves.gd) come in `waves`, so the stick leaves a foaming wake and things dropped in
+// send rings across; crests catch the light and froth white. Stirred round, it dips into a vortex in
+// the middle and climbs the iron (`vortex`, from how fast it's going round).
 // Colours and the rest come from a PotionLook.
 render_mode cull_disabled, specular_disabled;
 
@@ -20,6 +21,8 @@ uniform float spin = 0.0;
 uniform float boil = 0.0;
 uniform float murk = 0.0;
 uniform float flash = 0.0;
+// How fast it's going round (radians a second, either way)
+uniform float vortex = 0.0;
 uniform float clock = 0.0;
 uniform sampler2D waves : filter_linear, repeat_disable;
 // As scripts/waves.gd writes them
@@ -70,34 +73,47 @@ vec2 swirled(vec2 p, float amount) {
 	return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
 }
 
-vec3 wave_at(vec2 p) {
-	vec3 w = texture(waves, p / (radius * 2.0) + 0.5).rgb * 2.0 - 1.0;
-	return vec3(w.r * height_range, w.g * slope_range, w.b * slope_range);
+// The pot's soft pentagon: how far out its side is at the angle of p, as a share of radius
+float pent(vec2 p) {
+	return 1.0 + 0.07 * cos(5.0 * (atan(p.y, p.x) - 0.9425));
+}
+
+vec4 wave_at(vec2 p) {
+	vec4 t = texture(waves, p / (radius * 1.07 * 2.0) + 0.5);
+	vec3 w = t.rgb * 2.0 - 1.0;
+	return vec4(w.r * height_range, w.g * slope_range, w.b * slope_range, t.a);
+}
+
+// The dip of a stirred brew: down in the middle, up at the iron (no more or less brew overall)
+float dip(vec2 p) {
+	float r = length(p) / radius;
+	return min(vortex * vortex, 30.0) * 0.0022 * (r * r - 0.5);
 }
 
 void vertex() {
 	local = VERTEX.xz;
 	vec2 p = VERTEX.xz;
-	float edge = 1.0 - smoothstep(0.75, 1.0, length(p) / radius);
+	float edge = 1.0 - smoothstep(0.75, 1.0, length(p) / (radius * pent(p)));
 	float slow = mix(1.0, 0.4, thickness);
 	float h = sin(p.x * 5.0 + TIME * 1.3 * slow) * sin(p.y * 4.3 - TIME * 1.1 * slow) * 0.008;
-	h += boil * (vnoise(p * 7.0 + vec2(TIME * 1.7, -TIME * 1.3) * slow) - 0.5) * 0.05;
-	vec3 w = wave_at(p);
-	h += w.x;
+	h += boil * (vnoise(p * 9.0 + vec2(TIME * 2.3, -TIME * 1.9) * slow) - 0.5) * 0.04;
+	vec4 w = wave_at(p);
+	h += w.x + dip(p);
 	VERTEX.y += h * edge;
 	heave = h;
 }
 
 void fragment() {
 	vec2 p = local;
-	float r = length(p) / radius;
+	float r = length(p) / (radius * pent(p));
 	float t = clock;
-	vec3 w = wave_at(p);
-	vec2 slope = w.yz;
+	vec4 w = wave_at(p);
+	// The vortex's own slope: out from the middle, steeper toward the iron
+	vec2 slope = w.yz + (p / radius) * min(vortex * vortex, 30.0) * 0.0044 * 2.0 / radius;
 	// The waves' slope bends the surface (and so the light on it)
 	vec3 n_local = normalize(vec3(-slope.x, 1.0, -slope.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(mat3(MODEL_MATRIX) * n_local, 0.0)).xyz);
-	vec2 q = swirled(p, spin * 0.8 + t * swirl) + slope * 0.04;
+	vec2 q = p + slope * 0.06;
 	float n = vnoise(q * 6.0 + vec2(t * 0.21, 0.0)) * 0.65 + vnoise(q * 13.0 - vec2(0.0, t * 0.29)) * 0.35;
 	// Deeper, darker toward the middle
 	float depth = clamp(1.0 - r * r, 0.0, 1.0) * 0.85;
@@ -107,7 +123,7 @@ void fragment() {
 	// Pale lines wandering, swirled
 	float pixel = max(length(fwidth(p)), 0.0001);
 	float wide = 0.02 + pixel * 0.3;
-	float line = (1.0 - smoothstep(wide * 0.5, wide, net(q * 3.2, t * 1.3))) * lines;
+	float line = (1.0 - smoothstep(wide * 0.5, wide, net(q * 3.2, t * 0.5))) * lines * 0.3;
 	// Foam lapping at the iron, and a broken line standing off it
 	float lap = 0.82 + 0.18 * sin(t * 1.7 + n * 5.0);
 	float edge = (1.0 - r) * radius;
@@ -117,8 +133,10 @@ void fragment() {
 	white = max(white, cut(off, 1.6) * (1.0 - cut(off, 2.0)) * cut(n, 0.52) * 0.8);
 	// Wave crests froth, the steep sides of a wake catch pale
 	float steep = length(slope);
-	white = max(white, cut(w.x * (0.6 + 0.8 * n), 0.012) * 0.9);
-	white = max(white, cut(steep * (0.5 + n), 0.55) * 0.6);
+	white = max(white, cut(w.x * (0.6 + 0.8 * n), 0.02) * 0.8);
+	white = max(white, cut(steep * (0.5 + n), 0.85) * 0.5);
+	// The wake and splashes leave foam
+	white = max(white, cut(w.a * (0.6 + 0.6 * n), 0.45) * 0.85);
 	// The boil throws up foam in patches
 	white = max(white, cut(vnoise(q * 9.0 + t * 2.0) * boil, 0.55) * 0.7);
 	colour = mix(colour, mix(colour, foam, 0.45), line * (1.0 - white));

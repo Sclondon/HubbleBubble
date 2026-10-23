@@ -18,6 +18,9 @@ const HOLD_PUMP := 0.3
 const TIP_HOLD := 0.9
 
 var shop: Shop
+## Drawing only the floating book's two pages, into its own little picture (see Shop.show_book_pages)
+var page_only := false
+var page_shown := 0
 var buttons := {}
 var size_now := Vector2.ZERO
 var tall := true
@@ -75,6 +78,8 @@ func shake(id: String) -> void:
 
 
 func _process(dt: float) -> void:
+	if page_only:
+		return
 	_t += dt
 	squeeze = maxf(0.0, squeeze - dt * 4.0)
 	for d: Dictionary in [_bumps, _ticks, _shakes]:
@@ -126,6 +131,8 @@ func layout() -> void:
 # --- touches ---
 
 func _input(event: InputEvent) -> void:
+	if page_only:
+		return
 	if event is InputEventScreenTouch:
 		var e := event as InputEventScreenTouch
 		if e.pressed:
@@ -193,14 +200,12 @@ func _press(index: int, at: Vector2) -> void:
 			shop.toggle_pause()
 		elif _hit("sound", at):
 			shop.set_sound(Sfx.me.muted)
-		elif _hit("n64", at):
-			shop.set_n64(not shop.n64)
 		return
 	if shop.book_open:
 		_book_tap(at)
 		return
 	for id: String in buttons:
-		if id in ["resume", "sound", "n64", "leave_swamp"] or not _hit(id, at):
+		if id in ["resume", "sound", "leave_swamp"] or not _hit(id, at):
 			continue
 		_touches[index] = {"id": id, "last": at}
 		if id.begins_with("ticket"):
@@ -236,6 +241,9 @@ func _hit(id: String, at: Vector2) -> bool:
 # --- drawing ---
 
 func _draw() -> void:
+	if page_only:
+		_draw_open_book()
+		return
 	if shop.loading():
 		_draw_loading()
 		return
@@ -247,9 +255,7 @@ func _draw() -> void:
 		_:
 			_draw_top()
 			_draw_tickets()
-			_draw_stir_ring()
 			_draw_counts()
-			_draw_gauge()
 			_draw_speech()
 			if shop.book_open:
 				_draw_book()
@@ -434,49 +440,6 @@ func _wrap_with(f: Font, s: String, size: int, width: float) -> String:
 	return "\n".join(out)
 
 
-func _draw_stir_ring() -> void:
-	if shop.state != "play":
-		return
-	var cs := shop.cauldron_screen()
-	var c: Vector2 = cs[0]
-	var r: float = cs[1] * 1.12
-	# How far round this turn of the stick is (a turn counts when it comes all the way round)
-	if shop.stir_fill > 0.02 and shop.hut.stirring:
-		var dir: int = shop._stir_dir
-		var col := Color(0.55, 0.85, 1.0, 0.8) if dir > 0 else Color(1.0, 0.62, 0.82, 0.8)
-		var a0 := -PI * 0.5
-		draw_arc(c, r, a0, a0 + TAU * shop.stir_fill * dir, 40, col, 9, true)
-	# Held still on the brew: tipping it out
-	for t: Dictionary in _touches.values():
-		if t.get("id", "") == "stir" and t.get("still", 0.0) > 0.25 and not shop.brew.is_empty():
-			var k: float = clampf((t.still - 0.25) / (TIP_HOLD - 0.25), 0.0, 1.0)
-			draw_arc(t.last, 60, -PI * 0.5, -PI * 0.5 + TAU * k, 32, Color("ff9a6a"), 10, true)
-			_text("Tip it out", t.last + Vector2(0, -84), 24, Color("ffd0a0"), 7)
-
-
-func _draw_gauge() -> void:
-	var g := _gauge
-	_box(g.grow(6), WOOD, INK, 4, 16)
-	var bands := Book.HEAT_BANDS
-	for b in 4:
-		var y0: float = g.end.y - g.size.y * bands[b] / 100.0
-		var y1: float = g.end.y - g.size.y * minf(bands[b + 1], 100.0) / 100.0
-		draw_rect(Rect2(g.position.x, y1, g.size.x, y0 - y1), Book.HEAT_COLOURS[b])
-	var top_y: float = g.end.y - g.size.y * bands[4] / 100.0
-	draw_rect(Rect2(g.position.x, g.position.y, g.size.x, top_y - g.position.y), Color("ff2a6a") if int(_t * 6.0) % 2 == 0 and shop.heat > Book.HEAT_BANDS[4] else Color("8a1a3a"))
-	draw_rect(g, INK, false, 3)
-	var y := g.end.y - g.size.y * clampf(shop.heat, 0.0, 100.0) / 100.0
-	Icons.blob(self, PackedVector2Array([Vector2(g.position.x - 8, y - 10), Vector2(g.end.x + 8, y - 10), Vector2(g.end.x + 8, y + 10), Vector2(g.position.x - 8, y + 10)]), Color.WHITE, 4)
-	# Filling while a heat is held long enough to count
-	if shop.heat_fill > 0.0:
-		draw_arc(Vector2(g.get_center().x, y), 26, -PI * 0.5, -PI * 0.5 + TAU * shop.heat_fill, 24, Color("ffe060"), 6, true)
-	var band := Book.band_of(shop.heat)
-	if shop.heat >= Book.HEAT_BANDS[4]:
-		_text("TOO\nHOT!", Vector2(g.get_center().x - 8, g.position.y - 40), 22, Color("ff8a9a"), 7)
-	else:
-		_text(Book.HEAT_NAMES[band], Vector2(g.get_center().x - 14, g.position.y - 24), 20, Book.HEAT_COLOURS[band], 7)
-
-
 func _check(c: Vector2, s: float) -> void:
 	var pts := PackedVector2Array([c + Vector2(-0.8, 0) * s, c + Vector2(-0.2, 0.6) * s, c + Vector2(0.9, -0.6) * s])
 	Icons.line(self, pts, s * 0.55)
@@ -600,13 +563,13 @@ func _draw_summary() -> void:
 
 func _draw_pause() -> void:
 	var w := size_now.x
-	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 500)
+	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 420)
 	_card(r)
 	_text("PAUSED", Vector2(r.get_center().x, r.position.y + 56), 56, GOLD, 12)
 	var bw := r.size.x - 80
-	var ids := ["resume", "sound", "n64"]
-	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on"), "N64 filter: %s" % ("on" if shop.n64 else "off")]
-	for i in 3:
+	var ids := ["resume", "sound"]
+	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on")]
+	for i in 2:
 		var br := Rect2(r.position.x + 40, r.position.y + 110 + i * 92, bw, 74)
 		buttons[ids[i]] = {"rect": br}
 		_box(br, [GREEN, Color("8ab8e8"), Color("c8a0f0"), Color("e8a090")][i], INK, 4, 20)
@@ -910,3 +873,16 @@ func _draw_loading() -> void:
 		var p := c + Vector2((k - 2) * 26 + sin(_t * 3.0 + k) * 6.0, 60 - t * 50)
 		draw_circle(p, 9 * (1.0 - t * 0.5), Color(0.55, 1.0, 0.45, 1.0 - t))
 	_text("stirring the cauldron...", c + Vector2(0, 100), 24, Color("d8c8f0"), 6)
+
+
+## The floating book: the page it was left open at, and the next, side by side
+func _draw_open_book() -> void:
+	size_now = get_viewport_rect().size
+	var pages := _book_pages()
+	var left := clampi(page_shown, 0, pages.size() - 1)
+	var w := size_now.x * 0.5
+	_old_page(Rect2(6, 6, w - 9, size_now.y - 12), pages[left], left)
+	if left + 1 < pages.size():
+		_old_page(Rect2(w + 3, 6, w - 9, size_now.y - 12), pages[left + 1], left + 1)
+	else:
+		_paper(Rect2(w + 3, 6, w - 9, size_now.y - 12))

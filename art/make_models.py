@@ -81,8 +81,9 @@ def grow(name, points, edges, radii, sub=2, smooth=True):
     return ob
 
 
-def lathe(name, rings, seg=24, sub=1, cap_top=True, cap_bottom=True, wobble=None):
-    """Spun round Z: `rings` is a list of (z, radius_x, radius_y, y_offset). `wobble(angle, z)` adds to the radius."""
+def lathe(name, rings, seg=24, sub=1, cap_top=True, cap_bottom=True, wobble=None, shape=None):
+    """Spun round Z: `rings` is a list of (z, radius_x, radius_y, y_offset). `wobble(angle, z)` adds to the radius;
+    `shape(angle)` scales it (a soft pentagon, say)."""
     bm = bmesh.new()
     loops = []
     for (z, rx, ry, *rest) in rings:
@@ -91,7 +92,8 @@ def lathe(name, rings, seg=24, sub=1, cap_top=True, cap_bottom=True, wobble=None
         for j in range(seg):
             a = 2 * math.pi * j / seg
             w = wobble(a, z) if wobble else 0.0
-            loop.append(bm.verts.new((math.cos(a) * (rx + w), off + math.sin(a) * (ry + w), z)))
+            k = shape(a) if shape else 1.0
+            loop.append(bm.verts.new((math.cos(a) * (rx + w) * k, off + math.sin(a) * (ry + w) * k, z)))
         loops.append(loop)
     for i in range(len(loops) - 1):
         for j in range(seg):
@@ -844,8 +846,12 @@ def build_props():
     # either side and four stubby round feet. Nothing else on it.
     # The rim is at about 1.36-1.40 and the brew sits at 1.24 inside it (the game puts the brew's surface there).
     BROWN, BROWN_L, BROWN_D = "#a8522c", "#f0944c", "#4a2214"
+    # Not quite round: a soft pentagon, one flat side to the front (-Y). The game's brew follows the
+    # same shape (Brew.pent).
+    def pent(a):
+        return 1.0 + 0.07 * math.cos(5.0 * (a - math.radians(-54.0)))
     belly = lathe("cauldron", [(0.26, 0.2, 0.2), (0.32, 0.55, 0.55), (0.46, 0.84, 0.84), (0.7, 1.0, 1.0), (0.95, 1.02, 1.02),
-                               (1.12, 0.94, 0.94), (1.2, 0.9, 0.9)], seg=32, sub=2, cap_top=False)
+                               (1.12, 0.94, 0.94), (1.2, 0.9, 0.9)], seg=40, sub=2, cap_top=False, shape=pent)
 
     def copper(co, n):
         up = max(0.0, n.z) * 0.5 + max(0.0, min(1.0, (co.z - 0.3) / 0.9)) * 0.5
@@ -856,22 +862,22 @@ def build_props():
             c = c.lerp(lin("#5a2a18"), 0.35)
         return c
     paint(belly, copper)
-    inside = lathe("cauldron_in", [(0.9, 0.7, 0.7), (1.1, 0.82, 0.82), (1.25, 0.8, 0.8), (1.36, 0.8, 0.8)], seg=32, sub=1, cap_top=False)
+    inside = lathe("cauldron_in", [(0.9, 0.7, 0.7), (1.1, 0.82, 0.82), (1.25, 0.8, 0.8), (1.36, 0.8, 0.8)], seg=40, sub=1, cap_top=False, shape=pent)
     paint(inside, lambda co, n: lin("#120806"))
     rim = lathe("cauldron_rim", [(1.12, 0.92, 0.92), (1.17, 0.97, 0.97), (1.35, 0.97, 0.97), (1.4, 0.93, 0.93), (1.41, 0.86, 0.86),
-                                 (1.39, 0.8, 0.8), (1.33, 0.79, 0.79)], seg=40, sub=1, cap_top=False, cap_bottom=False)
+                                 (1.39, 0.8, 0.8), (1.33, 0.79, 0.79)], seg=40, sub=1, cap_top=False, cap_bottom=False, shape=pent)
     paint(rim, lambda co, n: lin("#4a2214").lerp(lin("#8a4a28"), max(0.0, n.z) * 0.7 + 0.15))
     extra = [rim]
     for k in range(18):
         a = 2 * math.pi * k / 18
-        rivet = egg("cauldron_rivet", (math.cos(a) * 0.975, math.sin(a) * 0.975, 1.26), (0.035, 0.035, 0.035), seg=8, rings=5, sub=0)
+        rivet = egg("cauldron_rivet", (math.cos(a) * 0.975 * pent(a), math.sin(a) * 0.975 * pent(a), 1.26), (0.035, 0.035, 0.035), seg=8, rings=5, sub=0)
         paint(rivet, lambda co, n: lin("#9a94a8").lerp(lin("#f0ecf8"), max(0.0, n.z) * 0.8))
         extra.append(rivet)
     for sgn in (1, -1):
         # A flat golden tab of a handle, with a dark slot through it
-        tab = box("cauldron_handle", (sgn * 1.04, 0, 1.02), (0.1, 0.36, 0.42), bevel=0.04)
+        tab = box("cauldron_handle", (sgn * 1.04 * pent(0 if sgn > 0 else math.pi), 0, 1.02), (0.1, 0.36, 0.42), bevel=0.04)
         paint(tab, lambda co, n: lin("#c8781e").lerp(lin("#ffcf5a"), max(0.0, n.z) * 0.5 + max(0.0, abs(n.x)) * 0.4))
-        slot = box("cauldron_slot", (sgn * 1.09, 0, 1.08), (0.04, 0.2, 0.14), bevel=0.02)
+        slot = box("cauldron_slot", (sgn * 1.09 * pent(0 if sgn > 0 else math.pi), 0, 1.08), (0.04, 0.2, 0.14), bevel=0.02)
         paint(slot, lambda co, n: lin("#3a1a0a"))
         extra += [tab, slot]
     for k in range(4):
@@ -1515,6 +1521,52 @@ def build_props():
         paint(page, lambda co, n: lin("#f4e4bc") if math.sin(co.z * 160) < 0.85 else lin("#8a6a4a"))
         book += [cover, page]
     out["book"] = [stand] + book
+
+    # A dial thermometer clipped to the pot, its stem out of the back of the dial and down into the
+    # brew: a brass rim, a cream face with the heats round it in colour (cold, warm, hot, roaring, and
+    # boiling over in red), ticks, and a needle of its own (the game turns it). The face looks down -Y
+    # (toward whoever's at the pot); heat 0 is down and to the left, 100 down and to the right.
+    R = 0.16
+    BANDS = [(0, 22, "#7fb8ff"), (22, 47, "#ffd84a"), (47, 72, "#ff9a2e"), (72, 92, "#ff4a2a"), (92, 100, "#c8104a")]
+    thermo = []
+    rim_t = ring("dial_rim", (0, 0, 0), R, 0.022, seg=32, sides=8, rot=Matrix.Rotation(math.pi / 2, 3, "X"))
+    paint(rim_t, lambda co, n: lin("#a8782a").lerp(lin("#ffd870"), max(0.0, n.z) * 0.6 + max(0.0, -n.y) * 0.3))
+    back = lathe("dial_back", [(-0.03, R * 0.98, R * 0.98), (0.0, R, R)], seg=32, sub=0)
+    back.data.transform(Matrix.Rotation(math.pi / 2, 4, "X"))
+    paint(back, lambda co, n: lin("#6a4a1a"))
+    face = lathe("dial_face", [(0.0, R * 0.95, R * 0.95), (0.001, R * 0.95, R * 0.95)], seg=32, sub=0)
+    face.data.transform(Matrix.Rotation(math.pi / 2, 4, "X") @ Matrix.Translation((0, 0, 0.004)))
+    paint(face, lambda co, n: lin("#f6ecd0"))
+    thermo += [rim_t, back, face]
+    steps = 54
+    for k in range(steps):
+        h = (k + 0.5) / steps * 100.0
+        col = next(c for a, b, c in BANDS if a <= h <= b)
+        th = math.radians(-135.0 + 270.0 * h / 100.0)
+        p = Vector((math.sin(th), 0, math.cos(th))) * R * 0.76
+        seg_box = box("glow_band" if h > 92 else "dial_band", (p.x, -0.012, p.z), (R * 0.1, 0.004, R * 0.2),
+                      rot=Matrix.Rotation(th, 3, "Y"))
+        paint(seg_box, lambda co, n, c=col: lin(c))
+        thermo.append(seg_box)
+    for k in range(11):
+        th = math.radians(-135.0 + 27.0 * k)
+        p = Vector((math.sin(th), 0, math.cos(th))) * R * 0.56
+        tick = box("dial_tick", (p.x, -0.013, p.z), (0.008, 0.004, R * (0.16 if k % 5 == 0 else 0.09)), rot=Matrix.Rotation(th, 3, "Y"))
+        paint(tick, lambda co, n: lin("#3a2414"))
+        thermo.append(tick)
+    stem = tube("dial_stem", (0, 0.02, 0), (0, 0.62, 0), 0.016, 0.01, seg=8)
+    paint(stem, lambda co, n: lin("#9a94a8").lerp(lin("#e8e4f0"), max(0.0, n.z) * 0.7))
+    collar = tube("dial_collar", (0, 0.0, 0), (0, 0.07, 0), 0.04, 0.03, seg=10)
+    paint(collar, lambda co, n: lin("#a8782a"))
+    clip = box("dial_clip", (0, 0.3, -0.05), (0.05, 0.12, 0.1), bevel=0.01)
+    paint(clip, lambda co, n: lin("#7a7488"))
+    thermo += [stem, collar, clip]
+    out["thermometer"] = thermo
+    needle = [box("needle", (0, -0.02, R * 0.32), (0.012, 0.006, R * 0.72)),
+              egg("needle_hub", (0, -0.024, 0), (0.022, 0.012, 0.022), seg=10, rings=6, sub=0)]
+    paint(needle[0], lambda co, n: lin("#c81a1a"))
+    paint(needle[1], lambda co, n: lin("#3a2414"))
+    out["thermometer_needle"] = needle
 
     # Each prop to a .glb of its own (the .blend keeps them all)
     os.makedirs(os.path.join(ROOT, "models"), exist_ok=True)

@@ -41,6 +41,27 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
 		quit()
 		return
+	if only == "cook":
+		main.start_free()
+		await _frames(5)
+		main.heat = 15.0
+		for w in [0, 1, 6]:
+			main.add(w)
+			await _frames(30)
+		for i in 60:
+			main.heat = 15.0
+			main.stir(0.08)
+			main._stir_seen = 0.25
+			main.hut.stir_at(Vector3(cos(main._stir_angle), 0, sin(main._stir_angle)) * 0.45)
+			await process_frame
+		root.get_texture().get_image().save_png("%s/cook_floating%s.png" % [out, "_wide" if wide else ""])
+		main.heat = 40.0
+		await _frames(80)
+		root.get_texture().get_image().save_png("%s/cook_cooking%s.png" % [out, "_wide" if wide else ""])
+		await _frames(90)
+		root.get_texture().get_image().save_png("%s/cook_done%s.png" % [out, "_wide" if wide else ""])
+		quit()
+		return
 	if only == "steam":
 		main.camera.position = Vector3(0.0, 2.2, 1.9)
 		main.camera.look_at(Vector3(0, 1.7, 0))

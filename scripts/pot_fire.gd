@@ -13,7 +13,7 @@ var light_energy := 2.5
 ## How far out from the middle the flames are born
 var radius := 1.08
 ## How tall a flame is at intensity 1
-var height := 1.05
+var height := 0.8
 
 var _mm: MultiMesh
 var _mat: ShaderMaterial

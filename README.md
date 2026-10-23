@@ -4,7 +4,7 @@ Granny Grumblewart's potion shop, in the style of an old N64 platformer. You are
 in your hut in the swamp: the pot in front of you on its fire, a shelf of ingredients curving round behind it below the
 serving counter, and other witches coming to the counter wanting potions. There are no buttons and no title screen;
 everything is done with the things in the hut. Godot 4.7, GL Compatibility, phones first and desktops too, drawn small
-and blown up soft (the N64 filter, which can be switched off in the pause card).
+and blown up soft and smeared (the N64 filter, always on).
 
 ## Playing
 
@@ -15,15 +15,18 @@ and blown up soft (the N64 filter, which can be switched off in the pause card).
   - **the door** on the right: out onto the balcony, where brews are tried (`T`).
   The swamp and the balcony are for when the counter's shut.
 - **Orders**: a customer at the window names a potion ("I'll take a Love Philtre"). That's all she says: look it up
-  in the **book** by the pot (`R`) or remember it. Her order is a note pegged to the string across the top, in a hurried
+  in the **book** (`R`) or remember it. Her order is a note pegged to the string across the top, in a hurried
   hand; it scorches up from the bottom as she loses patience. Tap a note to switch (`Tab`).
 - **Brewing**, done with the things themselves:
   - **ingredients**: pick one up off the shelf (one eye, one toadstool...) and drag it into the pot (`1`-`8` throw
-    one in). In the shop they run out (a count by each); an empty one is a cobwebbed bowl;
-  - **heat**: tap the bellows (`Space`, hold to keep pumping). Heat held in a band (WARM, HOT, ROARING) for a moment
-    counts. Too far over the top and it boils over and spoils;
+    one in). It floats there, bobbing on the waves and carried round by the stirring, until the fire cooks it. In
+    the shop they run out (a count by each); an empty one is a cobwebbed bowl;
+  - **heat**: tap the bellows (`Space`, hold to keep pumping); the dial thermometer clipped to the rim shows it. Heat
+    held in a band (WARM, HOT, ROARING) for a moment counts, and cooks what's floating: the pot rattles, everything
+    in it jiggles to a little jingle, and melts away. Too far over the top and it boils over and spoils;
   - **stirring**: put a finger on the brew and the stick's tip follows it; take it round the pot (`A`/`D`). Each
-    whole turn counts, sunwise or widdershins. The stick leaves a wake in the brew;
+    whole turn counts, sunwise or widdershins. The stick leaves a foaming wake, and going round sets the brew
+    going round: it dips into a vortex and carries what's floating with it;
   - **the wand** in its jar: tap it (`Z`) to quicken the brew;
   - **bottling**: take an empty jar off the tray on the counter, dip it in the pot and hold it there till it's full,
     then let go: it goes to the customer (the counter open) or out to the balcony to be tried (shut). Let go before
@@ -41,6 +44,9 @@ and blown up soft (the N64 filter, which can be switched off in the pause card).
 - **The balcony**: with the counter shut there are no customers, no clock and every ingredient. Each jar filled is
   taken out to the balcony, where a witch drinks it and whatever it does happens to her. New effects are written in
   the book's "Found by Brewing".
+
+**The book** floats open under the back window, showing the pages you last left it at: leave it at the recipe you
+want. Tap it to read it close up.
 
 ## How each potion looks (looks/)
 
@@ -70,8 +76,8 @@ much, vaguely; `tests/lore.gd` checks every recipe in the book makes its potion.
 | `scripts/hud.gd` | The order notes, heat gauge, talk, cards, the old book; sends taps into the hut (`Shop.pick`) |
 | `scripts/album.gd` | Photographs each model once and tones it sepia for the book |
 | `scripts/hut.gd` | The hut (back wall, shutters, back window, door, the swamp night outside), shelf and what's on it (each with a spot to tap), the stick, carrying and scooping |
-| `scripts/brew.gd` | The brew: its surface, bubbles, steam streamers, sparkles, splashes (after Salmon Run 2's), its light |
-| `scripts/waves.gd` | The brew's wave pool, worked on the CPU and handed to the surface shader as a texture |
+| `scripts/brew.gd` | The brew: its surface (a soft pentagon, like the pot), the stirred current, what's floating and cooking, bubbles, steam streamers, sparkles, splashes (after Salmon Run 2's), its light |
+| `scripts/waves.gd` | The brew's wave pool and its foam, worked on the CPU and handed to the surface shader as a texture |
 | `scripts/streamers.gd` | Wind Waker steam and smoke: thin winding ribbons built each frame |
 | `scripts/pot_fire.gd` | The fire under the pot (cards of `shaders/pot_fire.gdshader`, after the realtimevfx "simple fire" breakdown), sparks, light |
 | `scripts/potion_look.gd` | `PotionLook`, how a potion looks (see above) |

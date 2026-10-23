@@ -257,6 +257,27 @@ func _sfx() -> void:
 	_jingle("night", [[0.0, "D5"], [0.14, "A5"], [0.28, "F5"], [0.42, "D6"], [0.56, "C#6"], [0.7, "D6"]], [[0.0, "D2", 0.3], [0.42, "A2", 0.3], [0.7, "D2", 0.5]])
 	_jingle("win", [[0.0, "F5"], [0.12, "A5"], [0.24, "C6"], [0.36, "F6"], [0.6, "E6"], [0.72, "F6"]], [[0.0, "F2", 0.3], [0.36, "C3", 0.25], [0.6, "F2", 0.6]])
 	_jingle("lose", [[0.0, "A4"], [0.35, "G#4"], [0.7, "G4"], [1.05, "F#4"]], [[0.0, "A2", 0.3], [0.35, "G#2", 0.3], [0.7, "G2", 0.3], [1.05, "D2", 0.8]])
+	_cook()
+
+
+## Cooking: the pot rattling on the fire (a clatter of woodblocks) under a bouncy little run of
+## marimba that climbs and climbs, then lands on a bright "ta-da!"
+func _cook() -> void:
+	var b := _buf(2.6)
+	var run := ["D5", "F#5", "A5", "F#5", "E5", "G5", "B5", "G5", "F#5", "A5", "D6", "A5", "G5", "B5", "E6", "C#6"]
+	for k in run.size():
+		var at := k * 0.1
+		marimba(b, int(at * RATE), midi_hz(note_midi(run[k])), 0.1, 0.32)
+		woodblock(b, int(at * RATE), 900.0 + (k % 2) * 260.0, 0.22)
+		woodblock(b, int((at + 0.05) * RATE), 1300.0, 0.12)
+	for k in 4:
+		tuba(b, int(k * 0.4 * RATE), midi_hz(note_midi(["D3", "E3", "F#3", "A2"][k])), 0.3, 0.3)
+	# Ta-da
+	for n: String in ["D6", "F#6", "A6", "D5"]:
+		marimba(b, int(1.72 * RATE), midi_hz(note_midi(n)), 0.6, 0.3)
+	marimba(b, int(1.62 * RATE), midi_hz(note_midi("A5")), 0.1, 0.25)
+	tuba(b, int(1.72 * RATE), midi_hz(note_midi("D2")), 0.6, 0.4)
+	_save("cook", b)
 
 
 func _jingle(name: String, high: Array, low: Array) -> void:
