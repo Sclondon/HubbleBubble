@@ -181,12 +181,15 @@ func _ready() -> void:
 	view.add_child(hut)
 	tower = Tower.new()
 	tower.name = "tower"
-	tower.position = Vector3(200, 0, 0)
+	tower.position = Vector3.ZERO
 	view.add_child(tower)
 	swamp = Swamp.new()
 	swamp.name = "swamp"
-	swamp.position = Vector3(-200, 0, 0)
+	swamp.position = Vector3(-400, 0, 0)
 	view.add_child(swamp)
+	# (the swamp is gone: ingredients come back each night)
+	swamp.visible = false
+	swamp.process_mode = Node.PROCESS_MODE_DISABLED
 	camera = Camera3D.new()
 	camera.name = "camera"
 	camera.current = true
@@ -236,13 +239,10 @@ func _frame() -> void:
 			camera.global_position = swamp.global_position + Vector3(0, 7.4, 5.0)
 			camera.look_at(swamp.global_position + Vector3(0, 0.0, 0.55))
 	elif state == "tower":
-		# Up on the tower top, looking at the witch in the circle
+		# Up the periscope out of the roof
 		camera.keep_aspect = Camera3D.KEEP_WIDTH if tall else Camera3D.KEEP_HEIGHT
-		camera.fov = 60.0 if tall else 50.0
-		camera.global_transform = tower.global_transform * tower.camera_at
-		if tall:
-			camera.global_position = tower.global_position + Vector3(0, 2.5, 4.7)
-			camera.look_at(tower.global_position + Vector3(0, 0.75, 0))
+		camera.fov = 46.0 if tall else 40.0
+		_scope_camera(1.0)
 	elif tall:
 		# Phone: framed by width; you lean over the pot and look down into it, the counter beyond
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
@@ -262,6 +262,21 @@ func _frame() -> void:
 		hud.layout()
 
 
+## The periscope's head, out of the hut's roof, turned on whoever's out there with a potion (or the
+## village, if nobody), easing round to follow her
+const SCOPE_AT := Vector3(-0.6, 5.2, -3.9)
+var _scope_look := Vector3(0, 0, -18)
+
+
+func _scope_camera(ease_k: float) -> void:
+	var want := Vector3(0, 0.5, -18)
+	if is_instance_valid(tower.tester):
+		want = tower.tester.global_position + Vector3(0, 1.3, 0)
+	_scope_look = _scope_look.lerp(want, ease_k)
+	camera.position = SCOPE_AT
+	camera.look_at(_scope_look)
+
+
 ## Dark and close: a dim violet ambient, fog gathering in the corners, a glow round bright things
 func _atmosphere() -> Environment:
 	var e := Environment.new()
@@ -274,7 +289,7 @@ func _atmosphere() -> Environment:
 	e.tonemap_exposure = 1.45
 	e.fog_enabled = true
 	e.fog_light_color = Color(0.1, 0.07, 0.16)
-	e.fog_density = 0.045
+	e.fog_density = 0.018
 	e.fog_aerial_perspective = 0.0
 	e.glow_enabled = true
 	e.glow_intensity = 0.7
@@ -420,6 +435,9 @@ func _start_night() -> void:
 	hut.fresh()
 	_reset_brew()
 	_show_stock()
+	for i in 8:
+		stock[i] = maxi(stock[i], 4)
+	_show_stock()
 	clock = Book.night_length(night)
 	_spawn_t = 1.2
 	_tick = 0
@@ -470,18 +488,20 @@ func _to_tower(result: Dictionary) -> void:
 
 ## Through the door onto the balcony with nothing to try: the witch waits there to be brought something
 func visit_balcony() -> void:
-	if not _away_ok():
+	if state != "play" or paused:
 		return
 	tower_result = {}
 	tower_t = 9.0
+	tower_new = false
 	_move(func() -> void:
 		state = "tower"
-		tower.wait())
+		if is_instance_valid(tower.tester):
+			tower_result = {"effect": tower.tester._effect, "potency": tower.tester._potency, "colour": Color.WHITE} if tower.tester._effect != "" else {})
 
 
 ## Back in from the balcony
 func back_from_tower() -> void:
-	if state != "tower" or tower_t < 1.2:
+	if state != "tower" or tower_t < 0.5:
 		return
 	Sfx.play("tap")
 	_move(func() -> void: state = "play")
@@ -671,6 +691,10 @@ func _process(dt: float) -> void:
 		_play(dt)
 	elif state == "tower":
 		tower_t += dt
+		_scope_camera(minf(1.0, dt * 3.0))
+		# the shop keeps going while you watch
+		if mode == "shop":
+			_play(dt)
 	elif state != "swamp":
 		heat = move_toward(heat, 12.0, dt * 5.0)
 	hut.heat = heat
@@ -1188,14 +1212,14 @@ func _serve(result: Dictionary, from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)) -
 		_float("+%d" % coins, at, Color("ffe060"), true)
 		if combo > 1:
 			_float("Combo x%d!" % combo, at + Vector2(0, 50), Color("a0ffb0"))
-		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.happy(), from)
+		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: tower.send_off(c, result), from)
 		_say_folk(Book.line("thanks"), o.who.voice, o.customer, true)
 	else:
 		combo = 0
 		lost += 1
 		Sfx.play("huff")
 		_float(Lore.name_of(result) + "?!", screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.3, 0.3)), Color("ff9a8a"))
-		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.drink(result, true), from)
+		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: tower.send_off(c, result, true), from)
 		_say_folk(Book.line("wrong"), o.who.voice, o.customer, true)
 	_remove_order(i)
 	hut.fresh()
@@ -1322,9 +1346,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			tip_out()
 		KEY_O:
 			toggle_shop()
-		KEY_G:
-			visit_swamp()
-		KEY_T:
+		KEY_T, KEY_G:
 			visit_balcony()
 
 

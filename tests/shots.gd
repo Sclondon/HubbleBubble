@@ -5,6 +5,8 @@ extends SceneTree
 
 var out := "user://shots"
 var wide := false
+## How long to wait in the tower shot, in seconds
+var wait_s := 10.0
 ## A shorter phone (an iframe in a browser): 720 x 1170
 var short := false
 var only := ""
@@ -17,6 +19,8 @@ func _initialize() -> void:
 			out = a.substr(8)
 		elif a == "--wide":
 			wide = true
+		elif a.begins_with("--wait="):
+			wait_s = float(a.substr(7))
 		elif a == "--short":
 			short = true
 		elif a.begins_with("--only="):
@@ -132,7 +136,7 @@ func _run() -> void:
 		var recipe := "wing shroom H2 Z" if only == "tower" else "petal eye H1 S+1 Z"
 		main.brew = Book.steps_of(recipe).slice(0, -1)
 		main.bottle()
-		await _frames(330)
+		await _frames(int(wait_s * 60.0))
 		var img := root.get_texture().get_image()
 		img.save_png("%s/%s.png" % [out, only])
 		print("shot ", only)

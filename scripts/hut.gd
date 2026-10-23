@@ -178,7 +178,7 @@ func fresh() -> void:
 ## Where the moon is, 0 at the start of the night to 1 at the end
 func night_progress(t: float) -> void:
 	_night_t = t
-	moon.position = Vector3(lerpf(-1.0, 1.0, t), 2.6 + sin(t * PI) * 0.7, -6.4)
+	moon.position = Vector3(lerpf(-14.0, 14.0, t), 14.0 + sin(t * PI) * 8.0, -70.0)
 
 
 ## Throws the counter shutters open (the shop's open) or swings them shut
@@ -200,51 +200,9 @@ func _set_shutters(k: float) -> void:
 
 ## The swamp night beyond the back wall: a sky, stars, dead trees and reeds against it, black water
 func _outside() -> void:
-	var sky := Shape.new()
-	var k1 := Color("8a5ab8").srgb_to_linear()
-	var k2 := Color("2a2070").srgb_to_linear()
-	var z := -7.0
-	var corners := [Vector3(-7.0, -1.0, z), Vector3(7.0, -1.0, z), Vector3(7.0, 6.5, z), Vector3(-7.0, 6.5, z)]
-	sky._quad(corners, [Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK], [k1, k1, k2, k2])
-	add_child(sky.piece("sky", Shape.mat(1.0)))
-	var stars := Shape.new()
-	for i in 70:
-		var p := Vector3(_rng.randf_range(-6.0, 6.0), _rng.randf_range(2.4, 6.2), -6.9)
-		var s := _rng.randf_range(0.015, 0.045)
-		stars.ball(p, Vector3(s, s, s), Color("fff6c8"), null, 4, 3)
-	add_child(stars.piece("stars", Shape.mat(1.0)))
-	var dark := Color("161230")
-	var land := Shape.new()
-	# Far banks, then black water with the moon's road on it
-	land.ball(Vector3(-3.5, 0.6, -6.6), Vector3(3.2, 0.9, 0.3), Color("2a2650"), Color("1c1838"), 14, 6)
-	land.ball(Vector3(3.2, 0.5, -6.6), Vector3(3.6, 1.0, 0.3), Color("272352"), Color("1c1838"), 14, 6)
-	land.box(Vector3(0, 0.0, -5.0), Vector3(14.0, 0.05, 4.0), Color("141030"), Color("141030"))
-	land.box(Vector3(0, 0.03, -5.4), Vector3(0.5, 0.02, 3.0), Color("6a5a9a"), Color("6a5a9a"))
-	# Crooked dead trees, moss hanging off them
-	for spec: Array in [[-2.9, -5.6, 1.0], [2.6, -5.2, 1.2], [-0.9, -6.2, 0.7], [4.4, -6.0, 0.9]]:
-		var x: float = spec[0]
-		var zz: float = spec[1]
-		var s: float = spec[2]
-		var top := Vector3(x + 0.3 * s, 3.4 * s, zz)
-		land.bend([Vector3(x, 0.0, zz), Vector3(x + 0.1 * s, 1.4 * s, zz), Vector3(x - 0.15 * s, 2.5 * s, zz), top], 0.16 * s, 0.05 * s, dark)
-		land.bend([Vector3(x - 0.1 * s, 2.3 * s, zz), Vector3(x - 0.6 * s, 2.8 * s, zz), Vector3(x - 0.9 * s, 3.3 * s, zz)], 0.06 * s, 0.02 * s, dark)
-		land.bend([Vector3(x + 0.05 * s, 1.8 * s, zz), Vector3(x + 0.6 * s, 2.1 * s, zz), Vector3(x + 1.0 * s, 2.6 * s, zz)], 0.05 * s, 0.02 * s, dark)
-		for m in 3:
-			var mx := x + (m - 1) * 0.4 * s
-			land.tube(Vector3(mx, 2.6 * s, zz + 0.05), Vector3(mx + 0.05, 2.0 * s, zz + 0.05), 0.03, 0.005, Color("2a3a30"), null, 4)
-	# Reeds and bulrushes along the near edge
-	for i in 40:
-		var x := _rng.randf_range(-6.0, 6.0)
-		var zz := _rng.randf_range(-4.2, -3.4)
-		var h := _rng.randf_range(0.5, 1.3)
-		var lean := _rng.randf_range(-0.15, 0.15)
-		land.tube(Vector3(x, 0.0, zz), Vector3(x + lean, h, zz), 0.02, 0.008, Color("1e2a30"), null, 4)
-		if i % 4 == 0:
-			land.ball(Vector3(x + lean, h, zz), Vector3(0.035, 0.09, 0.035), Color("3a2418"), null, 5, 4)
-	add_child(land.piece("swamp_outside", Shape.mat(0.25)))
 	moon = Node3D.new()
 	moon.name = "moon"
-	var m := Shape.new().ball(Vector3.ZERO, Vector3(0.38, 0.38, 0.1), Color("fff2b0"), Color("f0d070"), 14, 8)
+	var m := Shape.new().ball(Vector3.ZERO, Vector3(4.0, 4.0, 1.0), Color("fff2b0"), Color("f0d070"), 14, 8)
 	m.ball(Vector3(0.1, 0.08, 0.06), Vector3(0.07, 0.07, 0.05), Color("e6d48a"), null, 6, 4)
 	m.ball(Vector3(-0.12, -0.1, 0.06), Vector3(0.05, 0.05, 0.04), Color("e6d48a"), null, 6, 4)
 	moon.add_child(m.piece("moon", Shape.mat(1.0)))
@@ -255,10 +213,11 @@ func _outside() -> void:
 func _room() -> void:
 	# Plank floor
 	var floor_s := Shape.new()
-	for i in 12:
-		var x := -6.0 + i * 1.0
+	for i in 7:
+		var x := -3.5 + i * 1.0
+		var half := sqrt(maxf(0.2, ROOM_R * ROOM_R - pow(absf(x + 0.5) + 0.5, 2.0)))
 		var shade := PLANK.lerp(PLANK_D, _rng.randf_range(0.0, 0.45))
-		floor_s.box(Vector3(x + 0.5, -0.05, 0.5), Vector3(0.96, 0.1, 9.0), shade, shade.darkened(0.3))
+		floor_s.box(Vector3(x + 0.5, -0.05, ROOM_Z), Vector3(0.96, 0.1, half * 2.0), shade, shade.darkened(0.3))
 	add_child(floor_s.piece("floor"))
 	# The round stone wall, the counter window cut through it at the back
 	var wall := MeshInstance3D.new()

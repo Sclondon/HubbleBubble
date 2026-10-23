@@ -118,3 +118,10 @@ camera at near full size and laid over the N64 picture, so it stays smooth while
 low-res. Each potion lights the room in its own colour (two lights in `Brew`, kept off the brew's own surface) and
 stands a glow up off the pot (`shaders/haze.gdshader`). Customers talk Banjo-Kazooie style: a see-through dark box
 over their head, letters popping up one at a time.
+
+**The island and the periscope.** The hut stands on an island after the Isle o' Hags (`models/island.glb`, built in
+`art/make_models.py`): hills, a lantern-lit path, a village of round cottages, a spiral mountain, the sea, lit by its
+own moon (render layer 8, so the hut stays lit by the potion alone), with witches wandering about. Every witch sold a
+potion walks off down the path and drinks it; the eyeball button (`T`) puts the periscope up out of the roof to watch
+(`scripts/tower.gd`, Shop's "tower" state). Brewing freely, a witch comes for each bottle and tries it out there.
+The swamp is gone; the shelf fills up again each night.

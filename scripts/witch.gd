@@ -44,6 +44,12 @@ var _storm_after := false
 var _floater_t := 0.0
 var _fade_mat: ShaderMaterial
 var _glows: Array[Node3D] = []
+## Walking: the points she's going through, and what to do when she gets there
+var _path: Array[Vector3] = []
+var _then: Callable
+## Wandering about the island for ever (a witch in the background)
+var wanders := false
+var _wander_round: Array[Vector3] = []
 
 
 static func make(model_name: String, is_player := false) -> Witch:
@@ -100,6 +106,30 @@ func duck(down: bool) -> void:
 	_state_t = 0.0
 
 
+## Walks off along `points` (on the ground), then `then` is called
+func walk_to(points: Array[Vector3], then: Callable = Callable()) -> void:
+	visible = true
+	_path = points.duplicate()
+	_then = then
+	_state = "walk"
+	_state_t = 0.0
+
+
+## Wanders between these places for ever, stopping at each a while
+func wander(places: Array[Vector3]) -> void:
+	wanders = true
+	_wander_round = places
+	_next_wander()
+
+
+func _next_wander() -> void:
+	var to: Vector3 = _wander_round[randi() % _wander_round.size()]
+	var pts: Array[Vector3] = [to + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))]
+	walk_to(pts, func() -> void:
+		_state = "idle"
+		_state_t = randf_range(-3.0, 0.0))
+
+
 func happy() -> void:
 	visible = true
 	_state = "happy"
@@ -147,6 +177,38 @@ func _move_customer(dt: float) -> void:
 	match _state:
 		"drinking":
 			position = _home
+			# Drunk it and had her fill of it: off home (a satisfied customer just goes)
+			if not _storm_after and _effect_t > 14.0 and not wanders:
+				_finish()
+			return
+		"walk":
+			if _path.is_empty():
+				_home = position
+				_state = "arrived"
+				if _then.is_valid():
+					_then.call()
+				return
+			var to: Vector3 = _path[0]
+			var d := to - position
+			d.y = 0.0
+			var step := dt * 1.6
+			if d.length() <= step:
+				position = Vector3(to.x, to.y, to.z)
+				_path.pop_front()
+			else:
+				position += d.normalized() * step
+				position.y = to.y
+				# turned the way she's going, with a waddle and a bounce
+				rotation.y = lerp_angle(rotation.y, atan2(d.x, d.z), minf(1.0, dt * 8.0))
+			_bob.position = Vector3(0, absf(sin(_t * 9.0)) * 0.08, 0)
+			_bob.rotation.z = sin(_t * 9.0) * 0.08
+			look_at_point = global_position + global_basis.z * 3.0 + Vector3(0, 1.4, 0)
+			return
+		"arrived":
+			return
+		"idle":
+			if wanders and _state_t > 3.0:
+				_next_wander()
 			return
 		"in":
 			var k := clampf(_state_t / 0.5, 0.0, 1.0)

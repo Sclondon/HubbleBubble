@@ -128,8 +128,8 @@ func layout() -> void:
 	_top = Rect2(0, 0, w, 70)
 	buttons["pause"] = {"rect": Rect2(w - 74, 8, 62, 56)}
 	# Out to the swamp and the balcony (as the back window and the door do)
-	buttons["go_swamp"] = {"rect": Rect2(w - 148, 84, 64, 64)}
-	buttons["go_balcony"] = {"rect": Rect2(w - 76, 84, 64, 64)}
+	# Up the periscope, to watch whoever's drinking a potion out on the island
+	buttons["go_scope"] = {"rect": Rect2(w - 76, 84, 64, 64)}
 	# The orders: small notes pegged to a string across the top
 	var tw := minf(168.0, (w - 70) / 3.0) if tall else 190.0
 	for i in 3:
@@ -219,16 +219,14 @@ func _press(index: int, at: Vector2) -> void:
 		_book_tap(at)
 		return
 	for id: String in buttons:
-		if id in ["resume", "sound", "leave_swamp"] or not _hit(id, at):
+		if id in ["resume", "sound", "leave_swamp", "go_shop", "go_free", "go_swamp"] or not _hit(id, at):
 			continue
 		_touches[index] = {"id": id, "last": at}
 		if id.begins_with("ticket"):
 			shop.select(int(id.substr(6)))
 		elif id == "pause":
 			shop.toggle_pause()
-		elif id == "go_swamp":
-			shop.visit_swamp()
-		elif id == "go_balcony":
+		elif id == "go_scope":
 			shop.visit_balcony()
 		return
 	var thing := shop.pick(at)
@@ -369,28 +367,20 @@ func _draw_top() -> void:
 	_button_pause(buttons.pause.rect)
 
 
-## The two buttons out of the hut, top right: the swamp (reeds by the water) and the balcony (a door
-## open on the moon). Dimmed while the shop's open (they're for when the counter's shut).
+## The eyeball button, top right: up the periscope
 func _draw_away() -> void:
-	var open := shop.mode == "free" and shop.state == "play"
-	for id: String in ["go_swamp", "go_balcony"]:
-		var r: Rect2 = buttons[id].rect
-		_box(r, Color("4a7a5a") if id == "go_swamp" else Color("6a5a9a"), INK, 4, 14)
-		var c := r.get_center()
-		if id == "go_swamp":
-			draw_rect(Rect2(c + Vector2(-22, 10), Vector2(44, 10)), Color("2a4a6a"))
-			for k in 4:
-				var x := -14.0 + k * 9.0
-				Icons.line(self, PackedVector2Array([c + Vector2(x, 12), c + Vector2(x + 2, -14 + (k % 2) * 6)]), 4, Color("a8e870"))
-			draw_circle(c + Vector2(-12, -14), 4, Color("8a5a2a"))
-			draw_circle(c + Vector2(13, -10), 4, Color("8a5a2a"))
-		else:
-			draw_rect(Rect2(c + Vector2(-14, -20), Vector2(28, 40)), Color("1b1450"))
-			draw_circle(c + Vector2(3, -8), 6, Color("fff2b0"))
-			draw_rect(Rect2(c + Vector2(-14, -20), Vector2(28, 40)), Color("f2c840"), false, 3.0)
-			draw_rect(Rect2(c + Vector2(-14, 8), Vector2(28, 3)), Color("8a5a2a"))
-		if not open:
-			_box(r, Color(0.05, 0.02, 0.08, 0.55), Color(0, 0, 0, 0), 0, 14, false)
+	var r: Rect2 = buttons["go_scope"].rect
+	_box(r, Color("6a5a9a"), INK, 4, 14)
+	var c := r.get_center()
+	var look := Vector2(sin(_t * 0.9) * 4.0, cos(_t * 0.7) * 2.0)
+	Icons.blob(self, Icons.oval(c, Vector2(24, 17)), Color("fffdf2"), 3)
+	draw_circle(c + look, 10, Color("3ac0a8"))
+	draw_circle(c + look, 5, INK)
+	draw_circle(c + look + Vector2(-3, -3), 2, Color.WHITE)
+	# red veins
+	for k in 3:
+		var a := PI + 0.5 + k * 0.4
+		Icons.line(self, PackedVector2Array([c + Vector2(cos(a), sin(a)) * 22, c + Vector2(cos(a), sin(a)) * 15]), 2, Color("d8303a"))
 
 
 func _button_pause(r: Rect2) -> void:
@@ -832,11 +822,25 @@ func _draw_tower() -> void:
 	var w := size_now.x
 	var h := size_now.y
 	var res: Dictionary = shop.tower_result
+	# The periscope's lens: everything but a round view through it in the dark, with its sight marks
+	var c := Vector2(w * 0.5, h * 0.46)
+	var rad := minf(w, h) * 0.46
+	var thick := maxf(w, h) * 1.5
+	draw_arc(c, rad + thick * 0.5, 0, TAU, 96, Color(0.03, 0.02, 0.05), thick, true)
+	draw_arc(c, rad + 6, 0, TAU, 96, Color("c8902a"), 12, true)
+	for k in 4:
+		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
+		draw_line(c + d * (rad - 28), c + d * (rad - 6), Color(1, 1, 1, 0.5), 3)
+	draw_line(c + Vector2(-14, 0), c + Vector2(14, 0), Color(1, 1, 1, 0.35), 2)
+	draw_line(c + Vector2(0, -14), c + Vector2(0, 14), Color(1, 1, 1, 0.35), 2)
 	_button_pause(buttons.pause.rect)
-	if res.is_empty():
+	var pulse0 := 1.0 + sin(_t * 5.0) * 0.04
+	if res.is_empty() or not is_instance_valid(shop.tower.tester):
+		_text("Tap to come down", Vector2(w * 0.5, h - 60), int(26 * pulse0), PARCH, 8)
 		return
-	_text(shop.tower.tester_name() + " tries it...", Vector2(w * 0.5, 120), 30, PARCH, 9)
-	if shop.tower_t < 1.4:
+	var tester: Witch = shop.tower.tester
+	if tester._effect == "":
+		_text(shop.tower.tester_name() + " takes it outside...", Vector2(w * 0.5, 120), 30, PARCH, 9)
 		return
 	var r := Rect2(w * 0.5 - minf(320, w * 0.45), h - (420 if tall else 330), minf(640, w * 0.9), 300 if tall else 260)
 	_box(r.grow(6), GOLD, INK, 5, 26)

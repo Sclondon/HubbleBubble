@@ -67,8 +67,11 @@ func _run() -> void:
 	var customer: Witch = main.orders[0].customer
 	main.bottle()
 	_check(main.lost == lost + 1 and main.orders.is_empty(), "the wrong potion loses the sale")
-	await _seconds(0.8)
-	_check(is_instance_valid(customer) and customer._effect == "second sight", "and she drinks it: second sight (%s)" % (customer._effect if is_instance_valid(customer) else "gone"))
+	for i in 12:
+		if is_instance_valid(customer) and customer._effect != "":
+			break
+		await _seconds(1.0)
+	_check(is_instance_valid(customer) and customer._effect == "second sight", "and she walks off and drinks it: second sight (%s)" % (customer._effect if is_instance_valid(customer) else "gone"))
 	await _seconds(4.0)
 
 	# Boiling over spoils a pot with something in it; holding still on the brew tips it out
@@ -197,18 +200,7 @@ func _run() -> void:
 	_check(main.state == "play" and main.mode == "free" and main.night == was_night + 1, "then it's back to the cauldron, the counter shut")
 	await _seconds(1.0)
 	_check(main.hut.shutters < 0.05, "the shutters swung shut")
-	# Out of the back window to the swamp
-	await _touch((main.hud.buttons["go_swamp"].rect as Rect2).get_center())
-	await _seconds(0.7)
-	_check(main.state == "swamp", "the swamp button goes out to the swamp")
-	var had: int = main.stock[0]
-	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
-	_check(main.stock[0] == had + 1, "a tap on the newts gathers an Eye of Newt (%d to %d)" % [had, main.stock[0]])
-	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
-	_check(main.stock[0] == had + 1, "and it takes a moment to grow back")
-	main.leave_swamp()
-	await _seconds(0.7)
-	_check(main.state == "play", "and back in through the window")
+	# (no swamp now: the shelf fills up again for each night)
 	await _touch(_centre("shutters"))
 	_check(main.state == "intro" and main.night == was_night + 1, "open the shutters again: the next night")
 	main.begin_play()
@@ -231,16 +223,19 @@ func _run() -> void:
 	await _frames(3)
 	main.bottle()
 	await _seconds(0.5)
-	_check(main.state == "tower", "bottled, it's taken out to the balcony")
+	_check(main.state == "tower", "bottled, up goes the periscope")
 	_check(main.discoveries.has("floating"), "Floating is written in the book")
-	await _seconds(2.2)
-	_check(main.tower.tester._effect == "floating", "the witch up there drinks it and floats")
+	for i in 12:
+		if main.tower.tester._effect != "":
+			break
+		await _seconds(1.0)
+	_check(main.tower.tester._effect == "floating", "a witch takes it out onto the island, drinks it and floats (seen through the periscope)")
 	await _touch(Vector2(360, 700))
 	await _seconds(0.7)
 	_check(main.state == "play" and main.mode == "free", "a tap brings you back in to brew another")
-	await _touch((main.hud.buttons["go_balcony"].rect as Rect2).get_center())
+	await _touch((main.hud.buttons["go_scope"].rect as Rect2).get_center())
 	await _seconds(0.7)
-	_check(main.state == "tower", "the balcony button goes out there too")
+	_check(main.state == "tower", "the eyeball button puts the periscope up any time")
 	await _seconds(1.3)
 	await _touch(Vector2(360, 700))
 	await _seconds(0.7)

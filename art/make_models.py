@@ -1622,6 +1622,130 @@ def build_props():
     paint(needle[1], lambda co, n: lin("#3a2414"))
     out["thermometer_needle"] = needle
 
+    # The island the hut stands on, after Banjo-Kazooie's Isle o' Hags: rolling grassy hills, a dirt
+    # path winding from the hut's window out to a village of round cottages with big coloured roofs
+    # (Banjo's house, Jinjo Village), blobby trees, lanterns on posts, a spiral mountain behind, and
+    # cliffs dropping to the sea all round. The hut's own crooked roof is here too, a periscope poking
+    # out of it. Blender's +Y is out of the hut's window (the game's -Z).
+    from mathutils import noise as mnoise
+    isle = []
+    PATH = [Vector((0, 3.5)), Vector((0.5, 8)), Vector((-2, 13)), Vector((1, 18)), Vector((-1, 24)), Vector((2, 30))]
+
+    def path_d(x, y):
+        best = 99.0
+        for i in range(len(PATH) - 1):
+            a, b = PATH[i], PATH[i + 1]
+            d = b - a
+            t = max(0.0, min(1.0, (Vector((x, y)) - a).dot(d) / d.length_squared))
+            best = min(best, (Vector((x, y)) - (a + d * t)).length)
+        return best
+
+    def ground_h(x, y):
+        r = math.hypot(x, y)
+        h = 1.4 * mnoise.noise(Vector((x * 0.06, y * 0.06, 0.3))) + 0.5 * mnoise.noise(Vector((x * 0.15, y * 0.15, 1.7)))
+        h *= max(0.0, min(1.0, (r - 5.0) / 8.0))
+        h *= 0.3 + 0.7 * min(1.0, path_d(x, y) / 4.0)
+        if r > 42.0:
+            h -= (r - 42.0) * 1.6
+        return h - 0.08
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=72, y_segments=72, size=55.0)
+    for v in bm.verts:
+        v.co.z = ground_h(v.co.x, v.co.y)
+    me = bpy.data.meshes.new("isle_ground")
+    bm.to_mesh(me)
+    bm.free()
+    ground = link(bpy.data.objects.new("isle_ground", me))
+
+    def ground_col(co, n):
+        if co.z < -1.5:
+            return lin("#7a6a5a").lerp(lin("#4a3e36"), min(1.0, -co.z / 10.0))
+        pd = path_d(co.x, co.y)
+        g = lin("#4aa83a").lerp(lin("#2e7a2e"), 0.5 + 0.5 * mnoise.noise(Vector((co.x * 0.3, co.y * 0.3, 5.0))))
+        g = g.lerp(lin("#8ac850"), max(0.0, co.z) * 0.2)
+        if pd < 1.3:
+            g = g.lerp(lin("#b08a5a"), min(1.0, (1.3 - pd) * 2.0))
+        return g
+    paint(ground, ground_col)
+    isle.append(ground)
+    sea = lathe("isle_sea", [(-3.0, 160.0, 160.0), (-3.0, 160.0, 160.0)], seg=24, sub=0, cap_bottom=False)
+    paint(sea, lambda co, n: lin("#1a3a6a"))
+    isle.append(sea)
+    # The spiral mountain behind the village
+    mx, my = -24.0, 40.0
+    mount = lathe("isle_mountain", [(z * 1.0, (1.0 - z / 16.0) * 13.0 + 1.0, (1.0 - z / 16.0) * 13.0 + 1.0) for z in range(0, 17, 2)], seg=20, sub=0)
+    mount.data.transform(Matrix.Translation((mx, my, ground_h(mx, my) - 0.5)))
+
+    def mount_col(co, n):
+        z = co.z
+        a = math.atan2(co.y - my, co.x - mx)
+        stripe = math.sin(a * 1.0 + z * 0.8) > 0.75
+        c = lin("#6a8a4a").lerp(lin("#8a8070"), min(1.0, z / 12.0))
+        return lin("#b08a5a") if stripe else c
+    paint(mount, mount_col)
+    isle.append(mount)
+
+    def cottage(x, y, wall, roof, turn):
+        z = ground_h(x, y)
+        walls = lathe("cottage_wall", [(0.0, 2.2, 2.2), (2.6, 2.1, 2.1)], seg=12, sub=0, cap_top=False)
+        walls.data.transform(Matrix.Translation((x, y, z - 0.2)))
+        paint(walls, lambda co, n: lin(wall) * (0.75 + 0.25 * max(0.0, n.x * 0.5 + 0.5)))
+        lean = Vector((math.cos(turn) * 0.4, math.sin(turn) * 0.4, 0))
+        cone = lathe("cottage_roof", [(2.3, 3.0, 3.0), (2.9, 2.4, 2.4), (4.2, 1.2, 1.2), (5.4, 0.15, 0.15)], seg=12, sub=0)
+        for vtx in cone.data.vertices:
+            k = max(0.0, (vtx.co.z - 2.3) / 3.1)
+            vtx.co += lean * k * k
+        cone.data.transform(Matrix.Translation((x, y, z - 0.2)))
+        paint(cone, lambda co, n: lin(roof).lerp(lin(roof) * 0.55, 0.5 * (math.sin(co.z * 9.0) > 0.4)))
+        door = box("cottage_door", (x + math.cos(turn) * 2.15, y + math.sin(turn) * 2.15, z + 0.7), (0.9, 0.2, 1.5), rot=Matrix.Rotation(turn + math.pi / 2, 3, "Z"))
+        paint(door, lambda co, n: lin("#5a3418"))
+        win = box("glow_window", (x + math.cos(turn + 0.9) * 2.15, y + math.sin(turn + 0.9) * 2.15, z + 1.6), (0.6, 0.2, 0.6), rot=Matrix.Rotation(turn + 0.9 + math.pi / 2, 3, "Z"))
+        paint(win, lambda co, n: lin("#ffd070"))
+        chim = tube("cottage_chimney", (x - 1.0, y, z + 3.4), (x - 1.0, y, z + 5.2), 0.3, 0.3, seg=6)
+        paint(chim, lambda co, n: lin("#8a6a5a"))
+        return [walls, cone, door, win, chim]
+    for x, y, wall, roof, turn in [(-9, 15, "#f0e8d0", "#4a6ad8", -1.2), (9, 17, "#e8d0b0", "#d84a4a", -2.0), (-15, 25, "#f0e0c8", "#e8b030", -0.8),
+                                   (14, 28, "#d8c8e8", "#8a4ac8", -2.3), (4, 34, "#e8e0c0", "#3ab878", -1.6), (-5, 30, "#f0d8c8", "#e86ab8", -1.4)]:
+        isle += cottage(x, y, wall, roof, turn)
+    rnd_i = random.Random(71)
+    for k in range(26):
+        a = rnd_i.uniform(0, math.tau)
+        r = rnd_i.uniform(8, 40)
+        x, y = math.cos(a) * r, math.sin(a) * r
+        if path_d(x, y) < 3.0:
+            continue
+        z = ground_h(x, y)
+        trunk = tube("tree_trunk", (x, y, z - 0.2), (x, y, z + 2.0), 0.3, 0.22, seg=6)
+        paint(trunk, lambda co, n: lin("#6a4426"))
+        isle.append(trunk)
+        for j in range(3):
+            blob = egg("tree_top", (x + rnd_i.uniform(-0.6, 0.6), y + rnd_i.uniform(-0.6, 0.6), z + 2.4 + j * 0.9), (1.4 - j * 0.3, 1.4 - j * 0.3, 1.1 - j * 0.2), seg=8, rings=5, sub=0)
+            paint(blob, lambda co, n: lin("#3a9a3a").lerp(lin("#1e5a2a"), 0.5 * max(0.0, -n.z)))
+            isle.append(blob)
+    for i in range(len(PATH) - 1):
+        p = PATH[i].lerp(PATH[i + 1], 0.5) + Vector((1.8, 0))
+        z = ground_h(p.x, p.y)
+        post = tube("lamp_post", (p.x, p.y, z - 0.2), (p.x, p.y, z + 2.2), 0.08, 0.07, seg=6)
+        paint(post, lambda co, n: lin("#3a2a20"))
+        lamp = box("glow_lamp", (p.x, p.y, z + 2.35), (0.3, 0.3, 0.4))
+        paint(lamp, lambda co, n: lin("#ffc860"))
+        isle += [post, lamp]
+    # The hut's own roof: a crooked cone of dark shingles over the round wall, the periscope out of it
+    roof_ = lathe("hut_roof", [(5.9, 4.2, 4.2), (6.6, 3.6, 3.6), (8.4, 2.0, 2.0), (10.6, 0.25, 0.25)], seg=14, sub=0)
+    for vtx in roof_.data.vertices:
+        k = max(0.0, (vtx.co.z - 5.9) / 4.7)
+        vtx.co += Vector((0.9, -0.5, 0)) * k * k
+    roof_.data.transform(Matrix.Translation((0, -0.25, 0)))
+    paint(roof_, lambda co, n: lin("#4a3a6a").lerp(lin("#2a2040"), 0.5 * (math.sin(co.z * 8.0) > 0.3)))
+    pipe = tube("periscope", (-1.2, 0.6, 7.0), (-1.2, 0.6, 11.0), 0.18, 0.18, seg=8)
+    paint(pipe, lambda co, n: lin("#c8902a"))
+    head_ = box("periscope_head", (-1.2, 0.85, 11.1), (0.4, 0.7, 0.4))
+    paint(head_, lambda co, n: lin("#c8902a"))
+    lens = box("glow_lens", (-1.2, 1.21, 11.1), (0.25, 0.05, 0.25))
+    paint(lens, lambda co, n: lin("#a8e0ff"))
+    isle += [roof_, pipe, head_, lens]
+    out["island"] = isle
+
     # Each prop to a .glb of its own (the .blend keeps them all)
     os.makedirs(os.path.join(ROOT, "models"), exist_ok=True)
     groups = {}
