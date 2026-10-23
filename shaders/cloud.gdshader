@@ -24,7 +24,7 @@ float noise3(vec3 x) {
 
 void vertex() {
 	seed = INSTANCE_CUSTOM.x;
-	vec3 o = vec3(seed * 31.0, -TIME * 0.6, seed * 17.0);
+	vec3 o = vec3(seed * 31.0, -TIME * 1.2, seed * 17.0);
 	float lump = noise3(VERTEX * 2.2 + o) * 0.6 + noise3(VERTEX * 4.5 + o * 1.3) * 0.4;
 	VERTEX *= 0.8 + lump * 0.45;
 	lp = VERTEX;

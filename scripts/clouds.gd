@@ -4,7 +4,7 @@ extends MultiMeshInstance3D
 ## swelling, drifting and turning, and thin away. A slow drift of them while it's hot, bursts when
 ## something goes in. Stands at the middle of the brew's surface.
 
-const MAX := 26
+const MAX := 40
 
 var _all: Array[Dictionary] = []
 
@@ -33,6 +33,12 @@ func _ready() -> void:
 
 ## One puff from a point (local), going up at `speed`, as big as `size`, in a colour
 func add(at: Vector3, col: Color, speed := 0.35, size := 1.0) -> void:
+	# a cluster of puffs, rolling up together
+	for k in randi_range(3, 5):
+		_one(at + Vector3(randf_range(-0.09, 0.09), randf_range(0.0, 0.1), randf_range(-0.09, 0.09)), col, speed * randf_range(0.85, 1.1), size * randf_range(0.6, 1.0))
+
+
+func _one(at: Vector3, col: Color, speed: float, size: float) -> void:
 	if _all.size() >= MAX:
 		_all.remove_at(0)
 	_all.append({"at": at, "vel": Vector3(randf_range(-0.08, 0.08), speed * randf_range(0.8, 1.2), randf_range(-0.08, 0.08)),
@@ -49,7 +55,9 @@ func _process(dt: float) -> void:
 		if c.t >= c.life:
 			_all.remove_at(i)
 			continue
-		c.at += c.vel * dt
+		# wobbling as it rises, pushed about by the air
+		var ph: float = c.seed * 20.0 + c.t * 1.7
+		c.at += (c.vel + Vector3(sin(ph) * 0.12, 0.0, cos(ph * 1.3) * 0.12)) * dt
 		c.vel *= 1.0 - dt * 0.35
 	for c in _all:
 		var k: float = c.t / c.life

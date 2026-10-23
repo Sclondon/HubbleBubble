@@ -14,6 +14,7 @@ uniform vec3 foam : source_color = vec3(0.85, 1.0, 0.92);
 uniform float glow = 0.15;
 uniform float lines = 0.45;
 uniform float glints = 1.5;
+uniform float shine = 0.15;
 uniform float thickness = 0.3;
 uniform float swirl = 0.4;
 uniform float radius = 0.8;
@@ -194,7 +195,7 @@ void fragment() {
 	float face = dot(n_local, normalize(vec3(-0.25, 1.0, -0.55)));
 	float shade = mix(0.75, 1.15, smoothstep(0.8, 1.0, face));
 	vec3 lv = normalize((VIEW_MATRIX * vec4(normalize(vec3(-0.2, 1.0, -0.9)), 0.0)).xyz);
-	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 12.0) * (1.0 - murk) * (1.0 - white) * 0.35;
+	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 12.0) * (1.0 - murk) * (1.0 - white) * shine;
 	colour = colour * shade + foam * gleam * 0.55;
 	ALBEDO = colour;
 	EMISSION = vec3(0.35) * collar_white + (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
@@ -216,5 +217,5 @@ void light() {
 	DIFFUSE_LIGHT += (0.3 + 0.7 * facing) * above * ATTENUATION * LIGHT_COLOR / PI;
 	float aim = pow(max(dot(NORMAL, normalize(LIGHT + VIEW)), 0.0), 16.0);
 	float flick = smoothstep(0.45, 0.55, spark * (0.25 + aim)) * smoothstep(0.05, 0.3, aim);
-	SPECULAR_LIGHT += (flick * glints + aim * 0.25) * above * ATTENUATION * LIGHT_COLOR / PI;
+	SPECULAR_LIGHT += (flick * glints + aim * 0.25) * shine * above * ATTENUATION * LIGHT_COLOR / PI;
 }

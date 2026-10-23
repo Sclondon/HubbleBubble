@@ -49,6 +49,15 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
 		quit()
 		return
+	if only == "dev":
+		main.start_free()
+		await _frames(5)
+		main.hut.set_brew(Color.WHITE, false, "love")
+		main.toggle_dev()
+		await _frames(120)
+		root.get_texture().get_image().save_png("%s/dev.png" % out)
+		quit()
+		return
 	if only == "floaters":
 		# Close over the brew with three things floating in it, settled
 		main.start_free()

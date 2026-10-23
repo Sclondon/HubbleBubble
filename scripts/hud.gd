@@ -182,6 +182,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _press(index: int, at: Vector2) -> void:
+	# (dev mode's panel down the right takes its own touches)
+	if shop.dev != null and at.x > size_now.x - 360:
+		return
 	if shop.fade > 0.05:
 		return
 	match shop.state:
@@ -214,12 +217,14 @@ func _press(index: int, at: Vector2) -> void:
 			shop.toggle_pause()
 		elif _hit("sound", at):
 			shop.set_sound(Sfx.me.muted)
+		elif _hit("dev", at):
+			shop.toggle_dev()
 		return
 	if shop.book_open:
 		_book_tap(at)
 		return
 	for id: String in buttons:
-		if id in ["resume", "sound", "leave_swamp", "go_shop", "go_free", "go_swamp"] or not _hit(id, at):
+		if id in ["resume", "sound", "dev", "leave_swamp", "go_shop", "go_free", "go_swamp"] or not _hit(id, at):
 			continue
 		_touches[index] = {"id": id, "last": at}
 		if id.begins_with("ticket"):
@@ -606,13 +611,13 @@ func _draw_summary() -> void:
 
 func _draw_pause() -> void:
 	var w := size_now.x
-	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 420)
+	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 510)
 	_card(r)
 	_text("PAUSED", Vector2(r.get_center().x, r.position.y + 56), 56, GOLD, 12)
 	var bw := r.size.x - 80
-	var ids := ["resume", "sound"]
-	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on")]
-	for i in 2:
+	var ids := ["resume", "sound", "dev"]
+	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on"), "Dev: potion look"]
+	for i in 3:
 		var br := Rect2(r.position.x + 40, r.position.y + 110 + i * 92, bw, 74)
 		buttons[ids[i]] = {"rect": br}
 		_box(br, [GREEN, Color("8ab8e8"), Color("c8a0f0"), Color("e8a090")][i], INK, 4, 20)

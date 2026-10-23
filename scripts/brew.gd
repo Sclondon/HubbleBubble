@@ -361,12 +361,12 @@ func _process(dt: float) -> void:
 		var cr := randf_range(0.1, 0.55)
 		_clouds.add(Vector3(cos(ca) * cr, 0.06, sin(ca) * cr), Color(look.steam_colour.lerp(Color(0.25, 0.2, 0.15), murk), 1.0), randf_range(0.25, 0.4))
 	# Glowing tendrils curling up out of it, in its own colour
-	_tendril_due += dt * (0.25 + heat * 0.9) * clampf(look.glow * 1.5 + 0.2, 0.0, 1.5) * (1.0 - murk)
+	_tendril_due += dt * (0.12 + heat * 0.35) * clampf(look.glow * 1.5 + 0.2, 0.0, 1.5) * (1.0 - murk)
 	while _tendril_due >= 1.0:
 		_tendril_due -= 1.0
 		var a := randf() * TAU
 		var r := randf_range(0.2, 0.6)
-		_tendrils.add_tendril(Vector3(cos(a) * r, 0.02, sin(a) * r), Color(look.light_colour, 0.45))
+		_tendrils.add_tendril(Vector3(cos(a) * r, 0.02, sin(a) * r), Color(look.light_colour, 0.22))
 	_tend_bubbles(dt)
 	_tend_steam(dt)
 	_waves.keep = lerpf(0.975, 0.94, thick())
@@ -759,12 +759,12 @@ func _tend_steam(dt: float) -> void:
 	for i in _vents.size():
 		_vents[i] += Vector2(sin(_clock * 0.7 + i * 2.0), cos(_clock * 0.5 + i * 3.0)) * dt * 0.15
 		_vents[i] = _vents[i].limit_length(0.5)
-	_puff_due += dt * look.steam * (0.3 + heat) * 4.0 * (1.0 - murk * 0.5)
+	_puff_due += dt * look.steam * (0.3 + heat) * 1.6 * (1.0 - murk * 0.5)
 	while _puff_due >= 1.0:
 		_puff_due -= 1.0
 		var v := _vents[randi() % _vents.size()]
 		var sc := look.steam_colour
-		_streamers.add(Vector3(v.x + randf_range(-0.08, 0.08), 0.02, v.y + randf_range(-0.08, 0.08)), Color(sc, minf(1.0, sc.a * 1.5)))
+		_streamers.add(Vector3(v.x + randf_range(-0.08, 0.08), 0.02, v.y + randf_range(-0.08, 0.08)), Color(sc, minf(0.45, sc.a * 0.8)))
 
 
 # --- sparkles fizzing up ---
@@ -813,6 +813,7 @@ func _apply(l: PotionLook) -> void:
 	_mat.set_shader_parameter("glow", l.glow)
 	_mat.set_shader_parameter("lines", l.lines)
 	_mat.set_shader_parameter("glints", l.glints)
+	_mat.set_shader_parameter("shine", l.shine)
 	_mat.set_shader_parameter("thickness", lerpf(0.55, 1.0, l.thickness))
 	_mat.set_shader_parameter("swirl", l.swirl)
 	_mat.set_shader_parameter("opacity", l.opacity)

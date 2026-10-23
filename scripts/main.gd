@@ -84,6 +84,9 @@ var smoke_screen: TextureRect
 var pages_hud: Hud
 ## The order notes, hanging in the hut
 var tickets: Tickets
+## Dev mode: the potion look panel (null when shut)
+var dev: DevPanel
+var dev_layer: CanvasLayer
 var hud: Hud
 var album: Album
 var sfx: Sfx
@@ -301,6 +304,22 @@ func _atmosphere() -> Environment:
 	e.glow_bloom = 0.08
 	e.glow_hdr_threshold = 0.9
 	return e
+
+
+## Dev mode on or off: the potion look panel down the right
+func toggle_dev() -> void:
+	paused = false
+	if dev != null:
+		dev.queue_free()
+		dev = null
+		return
+	if dev_layer == null:
+		dev_layer = CanvasLayer.new()
+		dev_layer.layer = 5
+		add_child(dev_layer)
+	dev = DevPanel.new()
+	dev.shop = self
+	dev_layer.add_child(dev)
 
 
 ## The order notes, clipped to their wire across the hut
@@ -1392,6 +1411,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			toggle_shop()
 		KEY_T, KEY_G:
 			visit_balcony()
+		KEY_QUOTELEFT:
+			toggle_dev()
 
 
 func _load() -> void:

@@ -9,10 +9,10 @@ extends MeshInstance3D
 
 const MAX := 24
 ## Seconds a point of the trail lasts, and how far apart they're laid
-const TAIL_LIFE := 0.9
+const TAIL_LIFE := 2.6
 const MIN_STEP := 0.025
 const LOOP_TIME := 0.9
-const LOOP_CHANCE := 0.45
+const LOOP_CHANCE := 0.0
 
 ## Drawn glowing, added over what's behind (shaders/streamer_glow.gdshader), for a potion's tendrils
 var glowing := false
@@ -38,9 +38,9 @@ func add(at: Vector3, col: Color, lively := 0.0, width := 1.0) -> void:
 	if _all.size() >= MAX:
 		_all.remove_at(0)
 	var side := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
-	_all.append({"at": at, "col": col, "age": 0.0, "life": randf_range(1.1, 1.7) * (1.0 - lively * 0.3),
-			"speed": randf_range(0.5, 0.75) * (1.0 + lively * 0.8), "a": 0.0, "side": side,
-			"loop_at": randf_range(0.25, 0.9) if randf() < LOOP_CHANCE + lively * 0.3 else INF, "loop_a": -1.0,
+	_all.append({"at": at, "col": col, "age": 0.0, "life": randf_range(3.5, 5.0) * (1.0 - lively * 0.4),
+			"speed": randf_range(0.35, 0.5) * (1.0 + lively * 0.8), "a": 0.0, "side": side,
+			"loop_at": INF, "loop_a": -1.0,
 			"phase": randf() * TAU, "sway": randf_range(0.25, 0.45) * (1.0 + lively * 0.5),
 			"width": randf_range(0.016, 0.024) * width, "pts": []})
 
@@ -49,9 +49,9 @@ func add(at: Vector3, col: Color, lively := 0.0, width := 1.0) -> void:
 func add_tendril(at: Vector3, col: Color) -> void:
 	add(at, col, 0.0, 2.2)
 	var s: Dictionary = _all[-1]
-	s.life = randf_range(2.0, 2.8)
-	s.speed = randf_range(0.4, 0.55)
-	s.sway = randf_range(0.5, 0.7)
+	s.life = randf_range(4.5, 6.5)
+	s.speed = randf_range(0.32, 0.45)
+	s.sway = randf_range(0.45, 0.6)
 
 
 func count() -> int:
@@ -82,11 +82,12 @@ func _steer(s: Dictionary, dt: float) -> void:
 		s.loop_a = minf(s.loop_a + TAU * dt / LOOP_TIME, TAU)
 		s.a = s.loop_a
 	else:
-		s.a = s.sway * sin(s.age * 3.0 + s.phase)
+		# a slow sway from side to side, the way smoke rises in still air
+		s.a = s.sway * sin(s.age * 1.3 + s.phase)
 	var side: Vector3 = s.side
 	s.at += (Vector3.UP * cos(s.a) + side * sin(s.a)) * s.speed * dt
 	# and the sideways drifts round slowly
-	s.side = side.rotated(Vector3.UP, dt * 0.8 * sin(s.phase))
+	s.side = side.rotated(Vector3.UP, dt * 0.25 * sin(s.phase))
 
 
 func _rebuild() -> void:

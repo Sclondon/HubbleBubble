@@ -89,6 +89,8 @@ var _fog_list: Array[Dictionary] = []
 var _dust: MultiMesh
 var _dust_list: Array[Dictionary] = []
 var _tap_handle: Node3D
+## What the brew is becoming (for dev mode)
+var brew_effect := ""
 var _pour := 0.0
 var _fill := 0.0
 var _valve: Node3D
@@ -173,6 +175,7 @@ func _process(dt: float) -> void:
 
 ## The brew becomes what's in it: its look for the effect it's making, murky when spoilt
 func set_brew(col: Color, murky := false, effect := "") -> void:
+	brew_effect = effect
 	brew.murk = 1.0 if murky else 0.0
 	if murky:
 		# Spoilt: a skull and crossbones of dirty smoke
@@ -417,7 +420,9 @@ func _cauldron() -> void:
 	_pot = Node3D.new()
 	_pot.name = "pot"
 	add_child(_pot)
-	_pot.add_child(Models.make("cauldron"))
+	var iron := ShaderMaterial.new()
+	iron.shader = preload("res://shaders/iron.gdshader")
+	_pot.add_child(Models.make("cauldron", iron))
 	fire = PotFire.new()
 	fire.name = "fire"
 	fire.position = Vector3(0, 0.06, 0)

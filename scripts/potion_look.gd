@@ -19,6 +19,8 @@ extends Resource
 ## The pale lines wandering over it, and glints where the light catches
 @export_range(0.0, 1.0) var lines := 0.45
 @export_range(0.0, 4.0) var glints := 1.5
+## How shiny the surface is where a light catches it (0 matte, 1 glossy)
+@export_range(0.0, 1.0) var shine := 0.15
 ## How thick it is: thick brews heave slowly and make fat lazy bubbles (0 water, 1 treacle)
 @export_range(0.0, 1.0) var thickness := 0.3
 ## How fast it swirls by itself
@@ -60,7 +62,13 @@ extends Resource
 
 ## The look for an effect: looks/<effect>.tres if there is one, else one made from `colour`
 static func for_effect(effect: String, colour: Color) -> PotionLook:
-	var path := "res://looks/%s.tres" % effect.replace(" ", "_").replace("'", "")
+	var file := "%s.tres" % effect.replace(" ", "_").replace("'", "")
+	# (one tuned in dev mode and kept on this machine comes first)
+	if FileAccess.file_exists("user://looks/" + file):
+		var mine: Resource = ResourceLoader.load("user://looks/" + file, "", ResourceLoader.CACHE_MODE_IGNORE)
+		if mine is PotionLook:
+			return mine
+	var path := "res://looks/" + file
 	if ResourceLoader.exists(path):
 		return load(path)
 	return from_colour(colour)
