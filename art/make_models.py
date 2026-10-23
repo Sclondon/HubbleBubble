@@ -1534,15 +1534,25 @@ def build_props():
     sw.append(skull)
     out["swamp"] = sw
 
-    # The stirring stick: a long wooden paddle. Origin at the top end; it runs along +Y to the blade.
-    stick = tube("stick", (0, 0, 0), (0, 1.25, 0), 0.04, 0.035, seg=10, sub=1)
+    # The stirring spoon, built at the size it's used (no squashing in the game, so the bowl stays
+    # round). Origin at the top end; it runs along +Y to a big round wooden bowl, dished on the -Z side.
+    stick = tube("stick", (0, 0, 0), (0, 0.8, 0), 0.05, 0.042, seg=10, sub=1)
     paint(stick, lambda co, n: lin("#b07a40"))
-    # a spoon at the end: a dished oval bowl
-    blade = egg("stick_blade", (0, 1.42, 0), (0.12, 0.17, 0.06), seg=14, rings=8, sub=1, shape=lambda v: Vector((v.x, v.y, -abs(v.z) * 0.8 + 0.02)))
-    paint(blade, lambda co, n: lin("#9a6430"))
-    knob = egg("stick_knob", (0, -0.02, 0), (0.055, 0.055, 0.055), seg=10, rings=6, sub=0)
+    # the neck thickening into the bowl
+    neck = tube("stick_neck", (0, 0.76, 0), (0, 0.86, -0.01), 0.042, 0.06, seg=10, sub=0)
+    paint(neck, lambda co, n: lin("#a87038"))
+
+    def bowl_shape(v):
+        # the back a deep round belly, the front pushed in to a hollow with a thick lip
+        z = -abs(v.z) if v.z > 0 else v.z
+        if v.z > 0:
+            z = -abs(v.z) * 0.55 + 0.012
+        return Vector((v.x, v.y, z))
+    blade = egg("stick_blade", (0, 0.98, -0.02), (0.11, 0.15, 0.085), seg=18, rings=10, sub=1, shape=bowl_shape)
+    paint(blade, lambda co, n: lin("#c08848"))
+    knob = egg("stick_knob", (0, -0.025, 0), (0.07, 0.06, 0.07), seg=10, rings=6, sub=0)
     paint(knob, lambda co, n: lin("#7a4a24"))
-    out["stick"] = [stick, blade, knob]
+    out["stick"] = [stick, neck, blade, knob]
 
     # The wand standing in a jar of sand; the wand is its own piece (origin at its grip)
     wjar = lathe("wand_jar", [(0.0, 0.08, 0.08), (0.12, 0.1, 0.1), (0.16, 0.07, 0.07), (0.2, 0.07, 0.07)], seg=14, sub=1, cap_top=True)

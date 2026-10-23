@@ -10,6 +10,8 @@ var failures := 0
 
 
 func _initialize() -> void:
+	# (the checks count frames as sixtieths of a second)
+	Engine.max_fps = 60
 	main = load("res://main.tscn").instantiate()
 	main.save_path = "user://smoke.cfg"
 	main.testing = true

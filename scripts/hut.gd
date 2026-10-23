@@ -94,6 +94,9 @@ var brew_effect := ""
 var _pour := 0.0
 var _fill := 0.0
 var _valve: Node3D
+## Polished brass on the taps and the pipe (shaders/metal.gdshader), and the pot's iron (which has brass on it too)
+var _brass: ShaderMaterial
+var _iron: ShaderMaterial
 ## How full the pot is (1 full, 0 drained), and where it's going
 var level := 1.0
 var level_to := 1.0
@@ -119,6 +122,10 @@ func _ready() -> void:
 
 func _process(dt: float) -> void:
 	_animate_props(dt)
+	# the brass shines with the potion's light and a little of the fire's
+	var g := (brew.look.light_colour * brew.light_now()).lerp(Color(1.0, 0.6, 0.3), 0.3)
+	_brass.set_shader_parameter("glint", g)
+	_iron.set_shader_parameter("glint", g)
 	_animate_stick(dt)
 	_animate_wand(dt)
 	_animate_air(dt)
@@ -433,7 +440,10 @@ func _cauldron() -> void:
 	brew.position = Vector3(0, BREW_LEVEL, 0)
 	_pot.add_child(brew)
 	# The drain tap is part of the pot (art/make_models.py); its handle turns, so it's its own model
-	_tap_handle = Models.make("cauldron_tap_handle")
+	_brass = ShaderMaterial.new()
+	_brass.shader = preload("res://shaders/metal.gdshader")
+	_iron = iron
+	_tap_handle = Models.make("cauldron_tap_handle", _brass)
 	_tap_handle.position = TAP_HANDLE
 	_tap_handle.rotation.y = 0.35
 	_pot.add_child(_tap_handle)
@@ -453,7 +463,7 @@ func _cauldron() -> void:
 	for x: float in [1.8, 2.4]:
 		pipe.box(Vector3(x, 1.66, 0.25), Vector3(0.05, 0.16, 0.16), Color("6b5a4a"), Color("4a3a2a"))
 	# (a little shine of its own, so the brass shows in the dark)
-	add_child(pipe.piece("water_pipe"))
+	add_child(pipe.piece("water_pipe", _brass))
 	_valve = Node3D.new()
 	_valve.position = WATER_VALVE + Vector3(0, 0.12, 0)
 	add_child(_valve)
@@ -462,8 +472,10 @@ func _cauldron() -> void:
 	for k in 4:
 		var a := k * PI * 0.25
 		wheel.tube(Vector3(cos(a), 0, sin(a)) * -0.11, Vector3(cos(a), 0, sin(a)) * 0.11, 0.012, 0.012, Color("d84a3a"), null, 5)
-	wheel.tube(Vector3(0, -0.12, 0), Vector3.ZERO, 0.02, 0.02, brass, null, 6)
 	_valve.add_child(wheel.piece("valve_wheel"))
+	var stem := Shape.new()
+	stem.tube(Vector3(0, -0.12, 0), Vector3.ZERO, 0.02, 0.02, brass, null, 6)
+	_valve.add_child(stem.piece("valve_stem", _brass))
 	spots["water"] = {"at": WATER_VALVE + Vector3(0, 0.1, 0), "r": 0.22}
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
 	# (a faint glow of its own, so the dial reads even in the rim's shadow)
@@ -697,8 +709,6 @@ func _shelf() -> void:
 	var wood := ShaderMaterial.new()
 	wood.shader = preload("res://shaders/wood.gdshader")
 	stick = Models.make("stick", wood)
-	for mi: MeshInstance3D in stick.find_children("*", "MeshInstance3D", true, false):
-		mi.scale = Vector3(1.3, STICK_SCALE, 1.3)
 	stick.name = "stick"
 	add_child(stick)
 
@@ -819,10 +829,10 @@ func _animate_stick(dt: float) -> void:
 	_tip = _tip.lerp(want, minf(1.0, dt * (22.0 if stirring else 3.0)))
 	var flat_out := Vector3(_tip.x, 0, _tip.z)
 	var out := flat_out.normalized() if flat_out.length() > 0.05 else Vector3.BACK
-	# (the spoon well down in the brew)
-	var dip := _tip - Vector3(0, 0.3, 0)
+	# (the spoon down in the brew, the top of its bowl just breaking the surface so you can see it's a spoon)
+	var dip := _tip - Vector3(0, 0.02, 0)
 	# standing nearly upright, leaning a little outward and away from you, so it clears the rim
-	var top := dip + (Vector3.UP + out * 0.22 + Vector3(0.06, 0, -0.12)).normalized() * 1.3 * STICK_SCALE
+	var top := dip + (Vector3.UP + out * 0.22 + Vector3(0.06, 0, -0.12)).normalized() * 0.98
 	stick.global_position = global_transform * top
 	stick.look_at(global_transform * dip, Vector3(out.x, 0.0, out.z) if out.length() > 0.1 else Vector3.BACK)
 	var speed := (_tip - was).length() / maxf(dt, 0.001)

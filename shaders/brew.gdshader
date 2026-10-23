@@ -24,6 +24,8 @@ uniform float murk = 0.0;
 uniform float flash = 0.0;
 // How much you can't see through it (0 clear as water, 1 solid as paint); foam is always solid
 uniform float opacity = 0.7;
+// The brew is where the light comes from, so it's always lit from within at least this much
+uniform float inner_light = 0.45;
 // How fast it's going round (radians a second, either way)
 uniform float vortex = 0.0;
 // Things in the brew, as Salmon Run 2's water draws round its fish: x, z, how wide it is where it
@@ -221,7 +223,7 @@ void fragment() {
 	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 12.0) * (1.0 - murk) * (1.0 - white) * shine;
 	colour = colour * shade + foam * gleam * 0.55;
 	ALBEDO = colour;
-	EMISSION = vec3(0.35) * collar_white + (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
+	EMISSION = colour * inner_light * (1.0 - murk * 0.6) + vec3(0.35) * collar_white + (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 	// See-through as the potion is (more at the middle where it's deepest is darker anyway); the

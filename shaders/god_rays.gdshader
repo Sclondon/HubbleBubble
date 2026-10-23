@@ -13,7 +13,7 @@ float hash(float x) {
 }
 
 float shafts(float u, float t) {
-	float a = u * 28.0;
+	float a = u * 22.0;
 	float i = floor(a);
 	float f = fract(a);
 	float k = mix(hash(i + floor(t)), hash(i + 1.0 + floor(t)), smoothstep(0.0, 1.0, f));
@@ -23,11 +23,12 @@ float shafts(float u, float t) {
 
 void fragment() {
 	float u = UV.x;
-	float v = UV.y;
+	// (a cylinder's v runs from its top down: turned over, so 0 is at the brew)
+	float v = 1.0 - UV.y;
 	float s = shafts(u + TIME * 0.004, TIME * 0.25);
-	s = smoothstep(0.45, 0.95, s);
+	s = 0.08 + 0.92 * smoothstep(0.35, 0.85, s);
 	// soft where the cone is seen edge on, fading up and away from the brew
-	float edge = pow(abs(dot(normalize(NORMAL), normalize(VIEW))), 1.5);
-	float fade = (1.0 - v) * (1.0 - v) * smoothstep(0.0, 0.08, v);
+	float edge = pow(abs(dot(normalize(NORMAL), normalize(VIEW))), 1.2);
+	float fade = pow(1.0 - v, 1.6) * smoothstep(0.0, 0.04, v);
 	ALBEDO = tint * s * edge * fade * strength;
 }

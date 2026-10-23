@@ -72,6 +72,27 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/dev.png" % out)
 		quit()
 		return
+	if only == "spoon":
+		# The stirring spoon close up, the brew hidden so the bowl shows
+		main.start_free()
+		await _frames(30)
+		main.set_process(false)
+		main.hut.set_process(false)
+		var stick: Node3D = main.hut.stick
+		stick.global_position = Vector3(-0.3, 2.9, 1.6)
+		stick.global_rotation = Vector3(0.6, 0.9, 0.4)
+		var lamp := OmniLight3D.new()
+		lamp.omni_range = 3.0
+		lamp.light_energy = 3.0
+		root.add_child(lamp)
+		lamp.global_position = Vector3(0.3, 3.2, 2.6)
+		main.camera.position = Vector3(0.0, 2.7, 2.9)
+		main.camera.look_at(Vector3(-0.1, 2.6, 1.6))
+		main.smoke_camera.global_transform = main.camera.global_transform
+		await _frames(4)
+		root.get_texture().get_image().save_png("%s/spoon.png" % out)
+		quit()
+		return
 	if only == "floaters":
 		# Close over the brew with three things floating in it, settled
 		main.start_free()

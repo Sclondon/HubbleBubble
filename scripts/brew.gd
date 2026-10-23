@@ -375,7 +375,7 @@ func _process(dt: float) -> void:
 	_light.light_energy = 2.2 * (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
 	_glow_light.light_color = _light.light_color
 	_rays.set_shader_parameter("tint", look.light_colour)
-	_rays.set_shader_parameter("strength", clampf((0.15 + look.glow * 0.5) * (0.6 + heat * 0.8) * (1.0 - murk * 0.8) * flick + _flash * 0.4, 0.0, 1.2))
+	_rays.set_shader_parameter("strength", clampf((0.45 + look.glow * 0.45) * (0.8 + heat * 0.6) * (1.0 - murk * 0.7) * flick + _flash * 0.5, 0.0, 1.1))
 	_spot.light_color = _light.light_color
 	_spot.light_energy = look.light_energy * (1.6 + heat * 1.6) * (0.4 + look.glow) * flick * (1.0 - murk * 0.6) + _flash * 4.0
 	_glow_light.light_energy = (look.light_energy * (0.5 + heat * 0.8) * (0.3 + look.glow) * flick * (1.0 - murk * 0.7) + _flash * 1.5) * 0.35
@@ -700,8 +700,9 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 				var out := sd / sl
 				force += Vector3(out.x, 0.0, out.y) * (reach - sl) * 260.0
 				var sv := Vector3(stick_vel.x, 0, stick_vel.y)
-				force += sv * 6.0
-				spin += Vector3(out.y, 0, -out.x) * sv.length() * 4.0 * h * 60.0
+				force += sv * 4.0
+				# (only a lazy roll: the thick brew soon stops it)
+				spin += Vector3(out.y, 0, -out.x) * minf(sv.length(), 1.5) * 0.5 * h * 60.0
 		# Cooking: kicked about
 		if shake > 0.0 and randf() < h * 3.0:
 			droplets(Vector3(pos.x, 0, pos.z), 2, 1.1)
@@ -711,7 +712,8 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 		vel += force * h
 		vel *= 1.0 - h * (0.4 + (3.0 * thick() if under > 0 else 0.0))
 		spin += torque * 900.0 * h / maxf(f.size * f.size * 40.0, 0.2) / 40.0
-		spin *= 1.0 - h * (2.0 if under > 0 else 0.3)
+		spin *= 1.0 - h * (4.5 if under > 0 else 0.3)
+		spin = spin.limit_length(5.0)
 		pos += vel * h
 		# never through the iron: held inside it, and what was going outward stopped
 		var fl := Vector2(pos.x, pos.z)

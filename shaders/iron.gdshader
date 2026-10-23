@@ -7,6 +7,8 @@ render_mode cull_disabled;
 
 uniform float pitting = 1.0;
 uniform float scratches = 1.0;
+// The brass of the drain tap built into the pot is polished metal, not iron (picked out by its colour)
+uniform vec3 glint : source_color = vec3(1.0, 0.8, 0.5);
 
 varying vec3 lp;
 
@@ -72,4 +74,16 @@ void fragment() {
 	ROUGHNESS = mix(0.9, 0.5, s);
 	METALLIC = 0.35;
 	SPECULAR = 0.3;
+	float brass = smoothstep(0.08, 0.2, base.r - base.b);
+	if (brass > 0.0) {
+		vec3 r = (INV_VIEW_MATRIX * vec4(reflect(-VIEW, NORMAL), 0.0)).xyz;
+		float band = exp(-r.y * r.y * 18.0) * 0.8 + smoothstep(0.6, 1.0, r.y) * 0.25;
+		float edge = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+		ALBEDO = mix(c, base, brass);
+		NORMAL = mix(NORMAL, normalize(NORMAL + (VIEW_MATRIX * vec4(mat3(MODEL_MATRIX) * bump, 0.0)).xyz * 0.6), brass);
+		ROUGHNESS = mix(ROUGHNESS, 0.22, brass);
+		METALLIC = mix(METALLIC, 1.0, brass);
+		SPECULAR = mix(SPECULAR, 0.8, brass);
+		EMISSION = base * glint * (band + edge * 0.8) * 0.35 * brass;
+	}
 }
