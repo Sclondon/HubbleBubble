@@ -32,6 +32,8 @@ const COUNTER_HOLE := Rect2(-1.1, 1.45, 2.2, 2.15)
 const SWAMP_HOLE := Rect2(-2.4, 1.9, 0.9, 1.2)
 const DOOR_HOLE := Rect2(1.42, 0.0, 1.0, 2.75)
 const WALL_Z := -3.0
+## How long the stirring stick is, as a share of its model
+const STICK_SCALE := 0.62
 ## The round wall: its middle (on the z axis) and how far out it is
 const ROOM_Z := 0.25
 const ROOM_R := 3.35
@@ -551,7 +553,12 @@ func _shelf() -> void:
 	props["bellows"] = bellows
 	spots["bellows"] = {"at": bellows.position + Vector3(0, 0.2, 0), "r": 0.45}
 	spots["stir"] = {"at": Vector3(0, CAULDRON_RIM, 0), "r": 0.95}
-	stick = Models.make("stick")
+	# A shorter stick, in real wood (shaders/wood.gdshader)
+	var wood := ShaderMaterial.new()
+	wood.shader = preload("res://shaders/wood.gdshader")
+	stick = Models.make("stick", wood)
+	for mi: MeshInstance3D in stick.find_children("*", "MeshInstance3D", true, false):
+		mi.scale = Vector3(1.3, STICK_SCALE, 1.3)
 	stick.name = "stick"
 	add_child(stick)
 
@@ -673,7 +680,7 @@ func _animate_stick(dt: float) -> void:
 	var flat_out := Vector3(_tip.x, 0, _tip.z)
 	var out := flat_out.normalized() if flat_out.length() > 0.05 else Vector3.BACK
 	var dip := _tip - Vector3(0, 0.12, 0)
-	var top := dip + (out * 0.4 + Vector3.UP + Vector3(0, 0, 0.35)).normalized() * 1.3
+	var top := dip + (out * 0.4 + Vector3.UP + Vector3(0, 0, 0.35)).normalized() * 1.3 * STICK_SCALE
 	stick.global_position = global_transform * top
 	stick.look_at(global_transform * dip, Vector3(out.x, 0.0, out.z) if out.length() > 0.1 else Vector3.BACK)
 	var speed := (_tip - was).length() / maxf(dt, 0.001)
