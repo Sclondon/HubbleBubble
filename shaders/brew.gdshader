@@ -6,7 +6,7 @@ shader_type spatial;
 // send rings across; crests catch the light and froth white. Stirred round, it dips into a vortex in
 // the middle and climbs the iron (`vortex`, from how fast it's going round).
 // Colours and the rest come from a PotionLook.
-render_mode cull_disabled, specular_disabled;
+render_mode cull_disabled, specular_disabled, blend_mix, depth_draw_always;
 
 uniform vec3 liquid : source_color = vec3(0.3, 0.65, 0.55);
 uniform vec3 deep : source_color = vec3(0.08, 0.22, 0.2);
@@ -21,6 +21,8 @@ uniform float spin = 0.0;
 uniform float boil = 0.0;
 uniform float murk = 0.0;
 uniform float flash = 0.0;
+// How much you can't see through it (0 clear as water, 1 solid as paint); foam is always solid
+uniform float opacity = 0.7;
 // How fast it's going round (radians a second, either way)
 uniform float vortex = 0.0;
 // Things in the brew, as Salmon Run 2's water draws round its fish: x, z, how wide it is where it
@@ -187,14 +189,17 @@ void fragment() {
 	// Shaded by its own slopes against a light from above and behind (so the waves always show), and
 	// a gleam on the faces of the waves turned to catch it
 	float face = dot(n_local, normalize(vec3(-0.25, 1.0, -0.55)));
-	float shade = mix(0.45, 1.35, smoothstep(0.82, 1.0, face));
+	float shade = mix(0.75, 1.15, smoothstep(0.8, 1.0, face));
 	vec3 lv = normalize((VIEW_MATRIX * vec4(normalize(vec3(-0.2, 1.0, -0.9)), 0.0)).xyz);
-	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 28.0) * (1.0 - murk) * (1.0 - white);
+	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 12.0) * (1.0 - murk) * (1.0 - white) * 0.35;
 	colour = colour * shade + foam * gleam * 0.55;
 	ALBEDO = colour;
 	EMISSION = vec3(0.35) * collar_white + (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
+	// See-through as the potion is (more at the middle where it's deepest is darker anyway); the
+	// foam, the wake and the collars solid
+	ALPHA = clamp(mix(opacity, 1.0, max(white, murk)) + depth * 0.15, 0.0, 1.0);
 	vec2 g = q / 0.05;
 	spark = vnoise(g * vec2(0.55, 1.0) + vec2(t * 0.9, t * 0.35)) * vnoise(g * vec2(1.0, 0.6) * 1.37 - vec2(t * 0.6, t * 0.8) + 23.0);
 	spark = max(spark, smoothstep(0.15, 0.7, steep) * 0.6);

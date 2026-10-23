@@ -27,6 +27,8 @@ var cooking := 0.0
 var _floaters: Array[Dictionary] = []
 ## Where the stick cuts the surface (x, z) and how hard it's going (0: not in it)
 var stick_in := Vector3.ZERO
+## How fast the stick's going through it (x, z, metres a second)
+var stick_vel := Vector2.ZERO
 
 var _target: PotionLook = look
 var _mat: ShaderMaterial
@@ -56,6 +58,8 @@ var _spark_due := 0.0
 var _vents: Array[Vector2] = []
 var _flash := 0.0
 var _splashes: Array[Splash] = []
+var _drops: MultiMeshInstance3D
+var _drop_list: Array[Dictionary] = []
 var _next_splash := 0
 
 
@@ -80,7 +84,7 @@ func _ready() -> void:
 	# light there stops the smoke camera drawing at all).
 	_light = OmniLight3D.new()
 	_light.name = "potion_light"
-	_light.position = Vector3(0, 0.08, 0)
+	_light.position = Vector3(0, 0.42, 0.1)
 	_light.omni_range = 9.0
 	_light.omni_attenuation = 0.9
 	_light.shadow_enabled = true
@@ -131,6 +135,27 @@ func _ready() -> void:
 	add_child(_spot)
 	_spot.visible = false
 	_sparks = _multi("sparks", _card(), preload("res://shaders/spark.gdshader"), MAX_SPARKS)
+	# Drops of brew, flung out: little balls, moved here
+	var dmm := MultiMesh.new()
+	dmm.transform_format = MultiMesh.TRANSFORM_3D
+	dmm.use_colors = true
+	var ball := SphereMesh.new()
+	ball.radius = 1.0
+	ball.height = 2.0
+	ball.radial_segments = 6
+	ball.rings = 3
+	dmm.mesh = ball
+	dmm.instance_count = 64
+	dmm.visible_instance_count = 0
+	_drops = MultiMeshInstance3D.new()
+	_drops.name = "drops"
+	_drops.multimesh = dmm
+	var dm := StandardMaterial3D.new()
+	dm.vertex_color_use_as_albedo = true
+	dm.roughness = 0.5
+	_drops.material_override = dm
+	_drops.custom_aabb = AABB(Vector3(-3, -2, -3), Vector3(6, 6, 6))
+	add_child(_drops)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
 	for i in 3:
@@ -159,6 +184,8 @@ func ripple(at: Vector2, power := 1.0) -> void:
 
 ## The stick drawn through the brew at a point (local x, z), going speed metres a second: a wake
 func wake(at: Vector2, speed: float) -> void:
+	if speed > 0.9 and randf() < (speed - 0.9) * 0.25:
+		droplets(Vector3(at.x, 0, at.y), 2 + int(speed), 0.6 + speed * 0.4)
 	_wake.stick_at(at)
 	_waves.push(at, clampf(0.006 + speed * 0.012, 0.0, 0.04), 0.055)
 	_waves.foam(at, clampf(0.05 + speed * 0.12, 0.0, 0.35), 0.045)
@@ -169,6 +196,7 @@ func splash(at: Vector3, strength := 1.0) -> void:
 	var sp := _splashes[_next_splash]
 	_next_splash = (_next_splash + 1) % _splashes.size()
 	sp.start(Vector3(at.x, 0.0, at.z), strength, look)
+	droplets(Vector3(at.x, 0.0, at.z), int(4 + 4 * strength), 1.4 + strength * 0.5)
 	ripple(Vector2(at.x, at.z), 1.6 * strength)
 	_waves.foam(Vector2(at.x, at.z), 0.5, 0.09 * sqrt(strength))
 	_flash = maxf(_flash, 0.25 * strength)
@@ -186,6 +214,39 @@ func puffs(at: Vector3, count: int, col: Color, speed := 0.6, size := 1.0) -> vo
 	# and a billow of puffy smoke
 	for i in maxi(3, count / 2):
 		_clouds.add(Vector3(at.x + randf_range(-0.15, 0.15), 0.08, at.z + randf_range(-0.15, 0.15)), Color(col, 1.0), 0.35 + speed * 0.5, size * randf_range(0.9, 1.4))
+
+
+## Drops of the brew flung out of it, arcing over and falling back (or over the rim onto the iron)
+func droplets(at: Vector3, count: int, speed := 1.2) -> void:
+	var col := look.liquid.lerp(look.foam, 0.2)
+	for i in count:
+		if _drop_list.size() >= 64:
+			_drop_list.remove_at(0)
+		var dir := Vector3(randf_range(-0.6, 0.6), 1.0, randf_range(-0.6, 0.6)).normalized()
+		_drop_list.append({"at": Vector3(at.x, 0.02, at.z), "vel": dir * speed * randf_range(0.6, 1.3), "col": col, "size": randf_range(0.012, 0.028), "t": 0.0})
+
+
+func _tend_drops(dt: float) -> void:
+	var mm := _drops.multimesh
+	var shown := 0
+	for i in range(_drop_list.size() - 1, -1, -1):
+		var d := _drop_list[i]
+		d.t += dt
+		d.vel += Vector3(0, -6.0, 0) * dt
+		d.at += d.vel * dt
+		var flat := Vector2(d.at.x, d.at.z)
+		# back into the brew (a little ring), or off over the rim and gone below
+		if d.vel.y < 0.0 and d.at.y <= 0.0 and flat.length() < RADIUS * 0.95:
+			ripple(flat, 0.25)
+			_drop_list.remove_at(i)
+		elif d.at.y < -1.4 or d.t > 2.5:
+			_drop_list.remove_at(i)
+	for d in _drop_list:
+		var stretch := 1.0 + minf(d.vel.length() * 0.4, 1.0)
+		mm.set_instance_transform(shown, Transform3D(Basis().scaled(Vector3(d.size, d.size * stretch, d.size)), d.at))
+		mm.set_instance_color(shown, d.col)
+		shown += 1
+	mm.visible_instance_count = shown
 
 
 ## A burst of sparks flung up from a point (local)
@@ -258,6 +319,7 @@ func _process(dt: float) -> void:
 	_waves.speed = lerpf(0.22, 0.1, thick())
 	_waves.update(dt)
 	_tend_sparks(dt)
+	_tend_drops(dt)
 
 
 # --- shapes of smoke ---
@@ -324,6 +386,10 @@ static func _card_foot() -> Mesh:
 # --- what's been put in, bobbing about till it's cooked ---
 
 ## Something dropped in (a model, at a point local to the surface) stays bobbing on it
+## How well each thing floats (see _float_body): toadstools and scales sit low, wings ride high
+const BUOY := {"one_shroom": 1.6, "one_scale": 1.6, "one_eye": 2.0, "one_leg": 1.9, "one_spider": 2.0, "one_pepper": 1.8, "one_petal": 2.6, "one_wing": 2.6}
+
+
 func float_in(model: String, at: Vector3) -> void:
 	var node := Models.make(model)
 	add_child(node)
@@ -342,7 +408,7 @@ func float_in(model: String, at: Vector3) -> void:
 		pts.append(Vector3((-0.45 if k & 1 else 0.45) * size.x, (-0.45 if k & 2 else 0.45) * size.y, (-0.45 if k & 4 else 0.45) * size.z))
 	_floaters.append({"node": node, "at": p, "pos": Vector3(p.x, 0.05, p.y), "vel": Vector3(randf_range(-0.2, 0.2), -1.2, randf_range(-0.2, 0.2)),
 			"rot": Basis(Vector3(randf(), randf(), randf()).normalized(), randf_range(0.0, PI)), "spin": Vector3(randf_range(-6, 6), randf_range(-3, 3), randf_range(-6, 6)),
-			"pts": pts, "size": maxf(size.x, maxf(size.y, size.z)), "phase": randf() * TAU, "gone": -1.0})
+			"pts": pts, "size": maxf(size.x, maxf(size.y, size.z)), "buoy": BUOY.get(model, 1.9), "phase": randf() * TAU, "gone": -1.0})
 	node.position = Vector3(p.x, 0.05, p.y)
 
 
@@ -472,7 +538,10 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 			if depth > 0.0:
 				under += 1
 				var point_vel := vel + spin.cross(arm)
-				var push := Vector3(0, minf(depth, 0.16) * 150.0 / pts.size() * 2.0, 0) - point_vel * (6.0 / pts.size())
+				# Pushed up by how deep this point is, as a share of the thing's size: wholly under, the
+				# brew lifts it with `buoy` times its weight (2: floats half out; under 1.3, sits low)
+				var under_k := clampf(depth / maxf(f.size * 0.12, 0.01), 0.0, 1.0)
+				var push := Vector3(0, under_k * 9.8 * f.buoy / pts.size(), 0) - point_vel * (6.0 / pts.size())
 				force += push
 				torque += arm.cross(push)
 		# The current carries it round; stirred, it tumbles more
@@ -493,7 +562,21 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 				var gap: float = (f.size + g.size) * 0.4
 				if dl < gap and dl > 0.0001:
 					force += d / dl * (gap - dl) * 80.0
+		# The stick: a post standing in the brew where it cuts the surface; things are shoved off it,
+		# and knocked along the way it's going
+		if stick_in.z > 0.0:
+			var sd := Vector2(pos.x, pos.z) - Vector2(stick_in.x, stick_in.y)
+			var reach: float = f.size * 0.45 + 0.04
+			var sl := sd.length()
+			if sl < reach and sl > 0.0001:
+				var out := sd / sl
+				force += Vector3(out.x, 0.0, out.y) * (reach - sl) * 260.0
+				var sv := Vector3(stick_vel.x, 0, stick_vel.y)
+				force += sv * 6.0
+				spin += Vector3(out.y, 0, -out.x) * sv.length() * 4.0 * h * 60.0
 		# Cooking: kicked about
+		if shake > 0.0 and randf() < h * 3.0:
+			droplets(Vector3(pos.x, 0, pos.z), 3, 1.3)
 		if shake > 0.0 and randf() < h * 8.0:
 			vel += Vector3(randf_range(-0.3, 0.3), randf_range(0.4, 0.9), randf_range(-0.3, 0.3))
 			spin += Vector3(randf_range(-10, 10), randf_range(-5, 5), randf_range(-10, 10))
@@ -624,6 +707,7 @@ func _apply(l: PotionLook) -> void:
 	_mat.set_shader_parameter("glints", l.glints)
 	_mat.set_shader_parameter("thickness", lerpf(0.55, 1.0, l.thickness))
 	_mat.set_shader_parameter("swirl", l.swirl)
+	_mat.set_shader_parameter("opacity", l.opacity)
 	var bm := _bubbles.material_override as ShaderMaterial
 	bm.set_shader_parameter("tint", l.bubble_colour)
 	bm.set_shader_parameter("opacity", l.bubble_opacity)

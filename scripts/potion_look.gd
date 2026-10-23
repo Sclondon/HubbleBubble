@@ -12,6 +12,8 @@ extends Resource
 @export var deep := Color(0.08, 0.22, 0.2)
 ## Foam at the rim, in the rings and lines
 @export var foam := Color(0.85, 1.0, 0.92)
+## How much you can't see through it (0 clear as water, 1 solid as paint)
+@export_range(0.0, 1.0) var opacity := 0.7
 ## Shines by itself (0 none, 1 bright)
 @export_range(0.0, 2.0) var glow := 0.15
 ## The pale lines wandering over it, and glints where the light catches
@@ -67,6 +69,7 @@ static func for_effect(effect: String, colour: Color) -> PotionLook:
 ## A plain look made from one colour (for a brew that isn't anything yet)
 static func from_colour(colour: Color) -> PotionLook:
 	var l := PotionLook.new()
+	l.opacity = 0.45
 	l.liquid = colour
 	l.deep = colour.darkened(0.7)
 	l.foam = colour.lightened(0.6)

@@ -112,7 +112,9 @@ func _process(dt: float) -> void:
 	# Its dial turned to you, a little tipped back
 	var eye := get_viewport().get_camera_3d()
 	if eye != null:
-		var to := (eye.global_position - _thermo.global_position)
+		var to := (eye.global_position - _thermo.global_position).normalized()
+		# (half turned to the pot too, so its light falls on the dial)
+		to = to + (brew.global_position + Vector3(0, 0.3, 0) - _thermo.global_position).normalized() * 0.8
 		to.y *= 0.6
 		_thermo.basis = Basis.looking_at(-to.normalized(), Vector3.UP).scaled(Vector3.ONE * 1.05)
 	# The pot rattles and jumps while it cooks
@@ -134,6 +136,8 @@ func _process(dt: float) -> void:
 	# Turned to whoever's looking, so its pages can be read from anywhere
 	var cam := get_viewport().get_camera_3d()
 	var to := ((cam.global_position if cam != null else Vector3(0, 3.0, 3.2)) - _book.position).normalized()
+	# (half turned to the pot too, so its light falls on the pages)
+	to = (to + (brew.global_position - _book.global_position).normalized() * 0.8).normalized()
 	_book.basis = Basis.looking_at(-to, Vector3.UP).scaled(Vector3.ONE * _book_scale) * Basis(Vector3.BACK, sin(t * 0.9) * 0.04)
 
 
@@ -300,19 +304,7 @@ func _counter() -> void:
 	frame.box(Vector3(x0 - 0.06, 2.55, -2.85), Vector3(0.22, 2.3, 0.4), WOOD, WOOD_D)
 	frame.box(Vector3(x1 + 0.06, 2.55, -2.85), Vector3(0.22, 2.3, 0.4), WOOD, WOOD_D)
 	frame.box(Vector3(0, 3.68, -2.85), Vector3(2.5, 0.24, 0.4), WOOD, WOOD_D)
-	# A little sign over it
-	frame.box(Vector3(0, 4.05, -2.8), Vector3(1.3, 0.42, 0.08), Color("e8c06a"), WOOD_D)
 	add_child(frame.piece("frame"))
-	var sign := Label3D.new()
-	sign.text = "POTIONS"
-	sign.font = load("res://fonts/Fredoka.ttf")
-	sign.font_size = 64
-	sign.outline_size = 0
-	sign.modulate = Color("5a2a12")
-	sign.pixel_size = 0.004
-	sign.position = Vector3(0, 4.05, -2.75)
-	sign.shaded = false
-	add_child(sign)
 	# Two shutters, hinged at the sides of the window, each half its width
 	for sgn: float in [-1.0, 1.0]:
 		var hinge := Node3D.new()
@@ -443,7 +435,7 @@ func _cauldron() -> void:
 	_pot.add_child(brew)
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
 	# (a faint glow of its own, so the dial reads even in the rim's shadow)
-	var thermo := Models.make("thermometer", Shape.mat(0.45))
+	var thermo := Models.make("thermometer")
 	thermo.name = "thermometer"
 	thermo.position = Vector3(-0.78, 1.6, 0.42)
 	thermo.scale = Vector3.ONE * 1.5
@@ -587,14 +579,12 @@ func _floating_book() -> Node3D:
 		page.position = Vector3(sgn * 0.29, 0, 0.0)
 		page.rotation.y = sgn * 0.18
 		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.albedo_color = Color(0.9, 0.82, 0.68)
+		m.albedo_color = Color(0.62, 0.56, 0.46)
+		m.roughness = 1.0
 		m.uv1_scale = Vector3(0.5, 1, 1)
 		m.uv1_offset = Vector3(0.0 if i == 0 else 0.5, 0, 0)
 		page.material_override = m
 		page.name = "page%d" % i
-		# Drawn sharp at full size, over the soft N64 picture, so it can be read
-		page.layers = 4
 		holder.add_child(page)
 	return b
 
@@ -688,6 +678,7 @@ func _animate_stick(dt: float) -> void:
 	stick.look_at(global_transform * dip, Vector3(out.x, 0.0, out.z) if out.length() > 0.1 else Vector3.BACK)
 	var speed := (_tip - was).length() / maxf(dt, 0.001)
 	brew.stick_in = Vector3(_tip.x, _tip.z, clampf(0.3 + speed, 0.3, 1.5))
+	brew.stick_vel = Vector2(_tip.x - was.x, _tip.z - was.z) / maxf(dt, 0.001)
 	if speed > 0.05:
 		brew.wake(Vector2(_tip.x, _tip.z), speed)
 	# Going round the middle sets the brew going round

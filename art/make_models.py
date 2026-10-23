@@ -1058,33 +1058,54 @@ def build_props():
         ing.append(blade)
     out["ing_shroom"] = ing
 
-    # Bat wing: one great leathery wing pinned on a little wooden stand, its finger bones showing
+    # Bat wing: a whole little dried bat pinned out on a board, both wings spread, so it reads at a
+    # glance: scalloped leathery wings on their finger bones, a furry body, big pointed ears
     ing = []
-    stand = box("wing_stand", (0, 0.04, 0.02), (0.3, 0.12, 0.04), bevel=0.01)
-    paint(stand, lit(plain("#8a5228")))
-    post = tube("wing_post", (0, 0.04, 0.04), (0, 0.04, 0.2), 0.012, 0.012, seg=8)
-    paint(post, lambda co, n: lin("#6b3e22"))
-    ing += [stand, post]
-    pivot = Vector((0, 0.03, 0.2))
-    tips = [Vector((-0.24, 0.0, 0.34)), Vector((-0.28, 0.0, 0.18)), Vector((-0.2, 0.0, 0.05)), Vector((0.02, 0.0, 0.02)),
-            Vector((0.22, 0.0, 0.08)), Vector((0.27, 0.0, 0.24)), Vector((0.2, 0.0, 0.36))]
-    outline = []
-    for i in range(len(tips)):
-        outline.append((tips[i].x, tips[i].z))
-        if i < len(tips) - 1:
-            m = (tips[i] + tips[i + 1]) / 2 * 0.72 + pivot * 0.28
-            outline.append((m.x, m.z))
-    outline.append((0.0, 0.4))
-    memb = flat("wing_membrane", outline, 0.01, (0, 0.04, 0), Matrix.Rotation(math.pi / 2, 3, "X"), sub=1)
-    paint(memb, lambda co, n: lin("#9a5ad8").lerp(lin("#4c2a7e"), min(1.0, (co - pivot).length * 3.0)))
-    ing.append(memb)
-    for t in tips[:3] + tips[4:]:
-        bone_ = grow("wing_bone", [pivot + Vector((0, 0.03, 0)), Vector((t.x, 0.06, t.z))], [(0, 1)], [0.012, 0.006], sub=1)
-        paint(bone_, lambda co, n: lin("#3a2050"))
-        ing.append(bone_)
-    claw = grow("wing_claw", [Vector((0.0, 0.06, 0.4)), Vector((0.03, 0.06, 0.45))], [(0, 1)], [0.012, 0.002], sub=0)
-    paint(claw, lambda co, n: lin("#f2e8d0"))
-    ing.append(claw)
+    board = box("wing_board", (0, 0.05, 0.22), (0.5, 0.03, 0.34), bevel=0.01, rot=Matrix.Rotation(-0.25, 3, "X"))
+    paint(board, lit(plain("#8a5228")))
+    leg_b = box("wing_board_foot", (0, 0.1, 0.03), (0.3, 0.12, 0.05), bevel=0.01)
+    paint(leg_b, lit(plain("#6b3e22")))
+    ing += [board, leg_b]
+    tilt = Matrix.Translation((0, 0.02, 0.24)) @ Matrix.Rotation(math.pi / 2 - 0.25, 4, "X")
+    for sgn in (1, -1):
+        # the wing's edge: from the shoulder out along the top to the wrist, then scallops between
+        # the finger tips back down to the body
+        pts = [(0.03, 0.03), (0.12, 0.09), (0.22, 0.08)]
+        tips = [(0.25, 0.02), (0.23, -0.07), (0.15, -0.11), (0.06, -0.1)]
+        last = pts[-1]
+        for t in tips:
+            mid = ((last[0] + t[0]) / 2 * 0.8, (last[1] + t[1]) / 2 * 0.8 - 0.01)
+            pts += [mid, t]
+            last = t
+        pts.append((0.02, -0.05))
+        outline = [(sgn * x, y) for x, y in pts]
+        if sgn < 0:
+            outline.reverse()
+        memb = flat("wing_membrane", outline, 0.01, (0, 0, 0), None, sub=1)
+        memb.data.transform(tilt)
+        paint(memb, lambda co, n: lin("#5a3a7a").lerp(lin("#2a1a3a"), 0.5))
+        ing.append(memb)
+        for t in tips + [(0.22, 0.08)]:
+            bone_ = tube("wing_bone", (sgn * 0.12, 0.09, 0.0), (sgn * t[0], t[1], 0.0), 0.007, 0.004, seg=5)
+            bone_.data.transform(tilt)
+            paint(bone_, lambda co, n: lin("#1a1024"))
+            ing.append(bone_)
+    body = egg("bat_body", (0, 0, 0), (0.045, 0.03, 0.08), seg=10, rings=7, sub=1)
+    body.data.transform(tilt)
+    paint(body, lambda co, n: lin("#3a2a2a"))
+    head = egg("bat_head", (0, 0.11, 0.0), (0.04, 0.035, 0.035), seg=10, rings=6, sub=1)
+    head.data.transform(tilt)
+    paint(head, lambda co, n: lin("#3a2a2a"))
+    ing += [body, head]
+    for sgn in (1, -1):
+        ear = flat("bat_ear", [(0, 0), (sgn * 0.035, 0.07), (sgn * 0.045, 0.0)] if sgn > 0 else [(0, 0), (sgn * 0.045, 0.0), (sgn * 0.035, 0.07)],
+                   0.008, (sgn * 0.012, 0.13, 0.005), None, sub=0)
+        ear.data.transform(tilt)
+        paint(ear, lambda co, n: lin("#4a3030"))
+        eye_ = egg("bat_eye", (sgn * 0.016, 0.115, 0.03), (0.008, 0.008, 0.006), seg=6, rings=4, sub=0)
+        eye_.data.transform(tilt)
+        paint(eye_, lambda co, n: lin("#ff4a3a"))
+        ing += [ear, eye_]
     out["ing_wing"] = ing
 
     # Frog legs: a pair tied with twine, hung over the edge of a little plate
@@ -1109,118 +1130,117 @@ def build_props():
     ing.append(twine)
     out["ing_leg"] = ing
 
-    # Spider: a big fat spider on her web, strung in a wooden hoop
+    # Spider: a big fat black spider squatting on a mossy stone, eight jointed legs splayed out, a red
+    # hourglass on her back, a cluster of red eyes (no web, no hoop: the spider is the whole picture)
     ing = []
-    hoop = ring("spider_hoop", (0, 0.03, 0.24), 0.2, 0.014, seg=24, sides=6, rot=Matrix.Rotation(math.pi / 2, 3, "X"))
-    paint(hoop, lambda co, n: lin("#9a6430"))
-    foot = box("spider_foot", (0, 0.03, 0.02), (0.22, 0.1, 0.04), bevel=0.01)
-    paint(foot, lit(plain("#7a4624")))
-    ing += [hoop, foot]
-    c = Vector((0, 0.03, 0.24))
-    for k in range(8):
-        a = math.pi * 2 * k / 8
-        d = Vector((math.cos(a), 0, math.sin(a)))
-        s_ = tube("web", c, c + d * 0.2, 0.0025, 0.0025, seg=4)
-        paint(s_, lambda co, n: lin("#f0f0ff"))
-        ing.append(s_)
-    for r in (0.06, 0.11, 0.16):
-        wr = ring("web_ring", c, r, 0.0022, seg=16, sides=3, rot=Matrix.Rotation(math.pi / 2, 3, "X"))
-        paint(wr, lambda co, n: lin("#f0f0ff"))
-        ing.append(wr)
-    sb = c + Vector((0, -0.03, 0.0))
-    body = egg("spider_body", sb + Vector((0, 0, -0.03)), (0.075, 0.06, 0.09), seg=14, rings=10, sub=1)
-    paint(body, lambda co, n: lin("#e8303a") if (abs(co.x) < 0.02 and abs(co.z - (sb.z - 0.04)) < 0.035 and co.y < sb.y - 0.03) else lin("#3a3260").lerp(lin("#14102a"), 0.6 * max(0.0, -n.z)))
-    head = egg("spider_head", sb + Vector((0, -0.01, 0.07)), (0.045, 0.04, 0.04), seg=10, rings=6, sub=1)
-    paint(head, lambda co, n: lin("#2e2a4a"))
+    stone_ = egg("spider_stone", (0, 0, 0.04), (0.17, 0.14, 0.06), seg=10, rings=6, sub=1)
+    paint(stone_, lambda co, n: lin("#6a6a72").lerp(lin("#4a8a3a"), 0.6 if n.z > 0.6 else 0.0))
+    ing.append(stone_)
+    sb = Vector((0, 0.0, 0.16))
+    body = egg("spider_body", sb + Vector((0, 0.05, 0.02)), (0.085, 0.1, 0.075), seg=14, rings=10, sub=1)
+    paint(body, lambda co, n: lin("#e8202a") if (abs(co.x) < 0.025 and n.z > 0.5 and abs(abs(co.y - 0.05) - 0.025) < 0.02) else lin("#1a1626").lerp(lin("#3a3450"), 0.4 * max(0.0, n.z)))
+    head = egg("spider_head", sb + Vector((0, -0.07, 0.0)), (0.05, 0.05, 0.045), seg=10, rings=6, sub=1)
+    paint(head, lambda co, n: lin("#1a1626"))
     ing += [body, head]
     for sgn in (1, -1):
         for k in range(4):
-            a = 0.9 - k * 0.55
-            hip = sb + Vector((sgn * 0.03, -0.01, 0.05 - k * 0.025))
-            knee = hip + Vector((sgn * 0.08, -0.04, math.sin(a) * 0.08 + 0.04))
-            foot_ = hip + Vector((sgn * 0.15, 0.0, math.sin(a) * 0.14))
-            lg = grow("spider_leg", [hip, knee, foot_], [(0, 1), (1, 2)], [0.012, 0.01, 0.005], sub=1)
-            paint(lg, lambda co, n: lin("#2e2a4a"))
+            a = -0.9 + k * 0.6
+            hip = sb + Vector((sgn * 0.03, -0.06 + k * 0.03, -0.01))
+            out_d = Vector((sgn * math.cos(a), math.sin(a), 0))
+            knee = hip + out_d * 0.11 + Vector((0, 0, 0.09))
+            foot_ = hip + out_d * 0.24 + Vector((0, 0, -0.12))
+            lg = grow("spider_leg", [hip, knee, foot_], [(0, 1), (1, 2)], [0.016, 0.013, 0.006], sub=1)
+            paint(lg, lambda co, n: lin("#1a1626"))
             ing.append(lg)
-        e = egg("spider_eye", sb + Vector((sgn * 0.016, -0.045, 0.08)), (0.012, 0.008, 0.012), seg=8, rings=5, sub=0)
-        paint(e, lambda co, n: lin("#ff4a4a"))
-        ing.append(e)
+        for e_ in range(2):
+            e = egg("spider_eye", sb + Vector((sgn * (0.014 + e_ * 0.016), -0.115, 0.015 + e_ * 0.012)), (0.011, 0.008, 0.011), seg=8, rings=5, sub=0)
+            paint(e, lambda co, n: lin("#ff3a3a"))
+            ing.append(e)
+        fang = grow("spider_fang", [sb + Vector((sgn * 0.015, -0.11, -0.015)), sb + Vector((sgn * 0.01, -0.13, -0.05))], [(0, 1)], [0.01, 0.002], sub=0)
+        paint(fang, lambda co, n: lin("#f2e8d0"))
+        ing.append(fang)
     out["ing_spider"] = ing
 
-    # Moon petals: a pale flower whose petals are little crescent moons, glowing, in a blue pot
+    # Moon petals: a flower whose head is a big glowing crescent moon, ringed with pale crescent
+    # petals, on a tall stem in a blue pot
     ing = []
     pot = lathe("petal_pot", [(0.0, 0.08, 0.08), (0.12, 0.12, 0.12), (0.14, 0.135, 0.135), (0.16, 0.13, 0.13)], seg=16, sub=1)
     paint(pot, lambda co, n: lin("#3a5ab0").lerp(lin("#7aa0f0"), 0.4 * max(0.0, n.z)) if not (0.1 < co.z < 0.125) else lin("#f2c840"))
     soil = egg("petal_soil", (0, 0, 0.15), (0.12, 0.12, 0.02), seg=12, rings=4, sub=0)
     paint(soil, lambda co, n: lin("#3a2414"))
-    stem = grow("petal_stem", [(0, 0, 0.15), (0.03, 0.0, 0.3), (0.0, -0.02, 0.42)], [(0, 1), (1, 2)], [0.012, 0.011, 0.01], sub=1)
+    stem = grow("petal_stem", [(0, 0, 0.15), (0.03, 0.0, 0.3), (0.0, -0.02, 0.42)], [(0, 1), (1, 2)], [0.014, 0.012, 0.011], sub=1)
     paint(stem, lambda co, n: lin("#5aaa4a"))
-    leaf = flat("petal_leaf", [(0, 0), (0.06, 0.025), (0.11, 0.0), (0.06, -0.02)], 0.006, (0.02, 0.0, 0.25), Matrix.Rotation(-0.6, 3, "Y"), sub=1)
+    leaf = flat("petal_leaf", [(0, 0), (0.07, 0.03), (0.13, 0.0), (0.07, -0.025)], 0.006, (0.02, 0.0, 0.25), Matrix.Rotation(-0.6, 3, "Y"), sub=1)
     paint(leaf, lambda co, n: lin("#6ac84a"))
     ing += [pot, soil, stem, leaf]
-    for k in range(5):
-        a = 2 * math.pi * k / 5
-        crescent = []
-        for i in range(13):
-            t = i / 12.0
-            th = -1.3 + 2.6 * t
-            crescent.append((math.cos(th) * 0.07, math.sin(th) * 0.07))
-        for i in range(13):
-            t = 1.0 - i / 12.0
-            th = -1.1 + 2.2 * t
-            crescent.append((math.cos(th) * 0.045 + 0.022, math.sin(th) * 0.045))
-        pet = flat("glow_petal", crescent, 0.008, (0, 0, 0), None, sub=1)
-        pet.data.transform(Matrix.Translation((0, -0.02, 0.43)) @ Matrix.Rotation(a, 4, "Z") @ Matrix.Rotation(0.5, 4, "Y") @ Matrix.Translation((0.05, 0, 0)))
-        paint(pet, lambda co, n: lin("#e0ecff").lerp(lin("#9ac0ff"), 0.4))
+
+    def crescent_pts(r_out, r_in, off):
+        c_ = []
+        for i in range(15):
+            th = -1.35 + 2.7 * i / 14.0
+            c_.append((math.cos(th) * r_out, math.sin(th) * r_out))
+        for i in range(15):
+            th = 1.15 - 2.3 * i / 14.0
+            c_.append((math.cos(th) * r_in + off, math.sin(th) * r_in))
+        return c_
+    for k in range(6):
+        a = 2 * math.pi * k / 6
+        pet = flat("glow_petal", crescent_pts(0.075, 0.05, 0.024), 0.008, (0, 0, 0), None, sub=1)
+        pet.data.transform(Matrix.Translation((0, -0.03, 0.47)) @ Matrix.Rotation(math.pi / 2, 4, "X") @ Matrix.Rotation(a, 4, "Z") @ Matrix.Translation((0.1, 0, 0)))
+        paint(pet, lambda co, n: lin("#c8d8ff"))
         ing.append(pet)
-    ctr = egg("glow_centre", (0, -0.02, 0.44), (0.03, 0.03, 0.022), seg=8, rings=5, sub=0)
-    paint(ctr, lambda co, n: lin("#fff27a"))
-    ing.append(ctr)
+    moon_ = flat("glow_centre", crescent_pts(0.085, 0.07, 0.035), 0.03, (0, 0, 0), None, sub=1)
+    moon_.data.transform(Matrix.Translation((0, -0.045, 0.47)) @ Matrix.Rotation(math.pi / 2, 4, "X") @ Matrix.Rotation(2.6, 4, "Z"))
+    paint(moon_, lambda co, n: lin("#fff27a"))
+    ing.append(moon_)
     out["ing_petal"] = ing
 
-    # Ghost peppers: a heap of white chillies with spooky little faces in a wicker basket, a wisp over them
-    ing = []
-    basket = lathe("pepper_basket", [(0.0, 0.11, 0.1), (0.08, 0.17, 0.15), (0.1, 0.18, 0.16)], seg=18, sub=1, cap_top=False)
-    paint(basket, lambda co, n: lin("#d8a85a").lerp(lin("#8a5a2a"), 0.5 * (math.sin(math.atan2(co.y, co.x) * 18) * math.sin(co.z * 120) > 0)))
-    rim = ring("pepper_rim", (0, 0, 0.1), 0.175, 0.015, seg=24, sides=6)
-    paint(rim, lambda co, n: lin("#b07a3a"))
-    ing += [basket, rim]
-    for k in range(4):
-        a = 2 * math.pi * k / 4 + 0.3
-        b = Vector((math.cos(a) * 0.06, math.sin(a) * 0.05, 0.1 + k * 0.012))
-        tip = b + Vector((math.cos(a + 1.3) * 0.12, math.sin(a + 1.3) * 0.1, 0.0))
-        pp = grow("pepper", [b, b.lerp(tip, 0.45) + Vector((0, 0, 0.03)), b.lerp(tip, 0.8) + Vector((0, 0, 0.0)), tip + Vector((0, 0, 0.04))],
-                  [(0, 1), (1, 2), (2, 3)], [0.04, 0.035, 0.02, 0.004], sub=2)
-        paint(pp, lambda co, n: lin("#fffafc").lerp(lin("#e8c8dc"), 0.4 * max(0.0, -n.z)))
-        st = grow("pepper_stem", [b, b - (tip - b).normalized() * 0.03 + Vector((0, 0, 0.03))], [(0, 1)], [0.014, 0.008], sub=1)
+    # Ghost peppers: three big wrinkly chillies, pale as ghosts, standing in a little dish, each with
+    # hollow black eyes and a wailing mouth, green stalks on top
+    ing = bowl("pepper_dish", (0, 0, 0), 0.19, 0.04, "#8a6a9a")
+    for k in range(3):
+        x = (k - 1) * 0.1
+        lean = (k - 1) * 0.25
+        b = Vector((x, 0.0, 0.03))
+        tip = b + Vector((math.sin(lean) * 0.05 + 0.03, -0.02, 0.3 - abs(k - 1) * 0.05))
+        mid = b.lerp(tip, 0.45) + Vector((0.025, 0, 0))
+        pp = grow("pepper", [b + Vector((0, 0, 0.0)), mid, tip], [(0, 1), (1, 2)], [0.012, 0.055, 0.045], sub=2)
+        paint(pp, lambda co, n: lin("#f4f0ff").lerp(lin("#b8b0e8"), 0.35 * max(0.0, -n.y) + 0.2 * (math.sin(co.z * 70.0) > 0.6)))
+        st = grow("pepper_stem", [tip, tip + Vector((0.02, 0, 0.05)), tip + Vector((0.05, 0, 0.06))], [(0, 1), (1, 2)], [0.02, 0.012, 0.008], sub=1)
         paint(st, lambda co, n: lin("#4a9a3a"))
         ing += [pp, st]
-        side = (tip - b).cross(Vector((0, 0, 1))).normalized()
+        face_c = mid + Vector((0, -0.05, 0.02))
         for sgn in (1, -1):
-            dot = egg("pepper_eye", b.lerp(tip, 0.3) + side * 0.015 * sgn + Vector((0, 0, 0.04)), (0.009, 0.009, 0.006), seg=6, rings=4, sub=0)
-            paint(dot, lambda co, n: lin(INK))
+            dot = egg("pepper_eye", face_c + Vector((sgn * 0.017, 0, 0.025)), (0.011, 0.008, 0.016), seg=6, rings=4, sub=0)
+            paint(dot, lambda co, n: lin("#140d12"))
             ing.append(dot)
-    wisp = grow("glow_wisp", [(0.02, 0, 0.16), (-0.03, 0.0, 0.25), (0.03, 0.0, 0.33), (0.0, 0.0, 0.38)], [(0, 1), (1, 2), (2, 3)],
-                [0.035, 0.03, 0.02, 0.004], sub=1)
-    paint(wisp, lambda co, n: lin("#e8f0ff"))
-    ing.append(wisp)
+        mouth = egg("pepper_mouth", face_c + Vector((0, 0, -0.018)), (0.01, 0.008, 0.018), seg=6, rings=4, sub=0)
+        paint(mouth, lambda co, n: lin("#140d12"))
+        ing.append(mouth)
     out["ing_pepper"] = ing
 
-    # Dragon scales: one great shining scale propped up on a stand, two small ones at its foot
+    # Dragon scales: a patch of dragon hide on a little stand, rows of overlapping green scales
+    # edged with gold, a ridge of spikes down its middle
     ing = []
-    base = lathe("scale_base", [(0.0, 0.12, 0.09), (0.03, 0.12, 0.09), (0.04, 0.1, 0.075)], seg=16, sub=1)
+    base = lathe("scale_base", [(0.0, 0.13, 0.1), (0.03, 0.13, 0.1), (0.04, 0.11, 0.085)], seg=16, sub=1)
     paint(base, lit(plain("#6a3a2a")))
     ing.append(base)
-    shield = [(0, 0.2), (0.11, 0.14), (0.14, 0.02), (0.1, -0.1), (0, -0.16), (-0.1, -0.1), (-0.14, 0.02), (-0.11, 0.14)]
-    big = flat("scale", shield, 0.03, (0, 0.0, 0.22), Matrix.Rotation(1.35, 3, "X"), sub=2)
-    paint(big, lambda co, n: lin("#ffb83a").lerp(lin("#ff5a1a"), max(0.0, min(1.0, (0.3 - co.z) * 3.0))).lerp(lin("#fff0a0"), 0.5 * max(0.0, -n.y) ** 4))
-    ridge = grow("scale_ridge", [(0, -0.02, 0.08), (0, -0.04, 0.22), (0, -0.05, 0.36)], [(0, 1), (1, 2)], [0.012, 0.016, 0.006], sub=1)
-    paint(ridge, lambda co, n: lin("#ffe080"))
-    ing += [big, ridge]
-    for k, x in enumerate((-0.09, 0.1)):
-        sm = flat("scale_small", [(px * 0.45, py * 0.45) for px, py in shield], 0.02, (x, -0.07, 0.03), Matrix.Rotation(0.3 + k * 0.4, 3, "Z"), sub=1)
-        paint(sm, lambda co, n: lin("#ff9a2e").lerp(lin("#ffe080"), 0.4 * max(0.0, n.z)))
-        ing.append(sm)
+    shield = [(0, 0.06), (0.045, 0.04), (0.055, 0.0), (0.035, -0.04), (0, -0.065), (-0.035, -0.04), (-0.055, 0.0), (-0.045, 0.04)]
+    tip_rot = Matrix.Rotation(1.2, 3, "X")
+    for row in range(4):
+        for colk in range(4 - (row % 2)):
+            x = -0.15 + colk * 0.1 + (0.05 if row % 2 else 0.0)
+            z = 0.4 - row * 0.085
+            sc = flat("scale", shield, 0.018, (x, -0.01 * row, z), tip_rot, sub=1)
+            paint(sc, lambda co, n: lin("#3ac08a").lerp(lin("#0a5a4a"), 0.5 * max(0.0, -n.y)) if math.hypot(co.x % 0.1 - 0.05, 0) < 0.04 else lin("#f2c840"))
+            ing.append(sc)
+    for k in range(4):
+        spike = grow("scale_spike", [(0, -0.05, 0.12 + k * 0.08), (0, -0.1, 0.15 + k * 0.08)], [(0, 1)], [0.02, 0.003], sub=0)
+        paint(spike, lambda co, n: lin("#f2c840"))
+        ing.append(spike)
+    post = tube("scale_post", (0, 0.04, 0.03), (0, 0.04, 0.4), 0.015, 0.015, seg=8)
+    paint(post, lambda co, n: lin("#5a3418"))
+    ing.append(post)
     out["ing_scale"] = ing
 
     # A place on the table not stocked yet: an empty dish under a cobweb

@@ -22,3 +22,4 @@ sparkles = 1.4
 sparkle_colour = Color(0.78431374, 0.972549, 1, 1)
 smoke_shape = 5
 shape_colour = Color(0.85, 1, 0.95, 0.8)
+opacity = 0.4

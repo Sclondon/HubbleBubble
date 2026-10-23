@@ -18,7 +18,8 @@ static func dress(node: Node, material: Material) -> void:
 	if _glass == null:
 		_glass = ShaderMaterial.new()
 		_glass.shader = preload("res://shaders/glass.gdshader")
-		_glow = Shape.mat(1.0)
+		# (a faint glow: the potion is the light in the hut)
+		_glow = Shape.mat(0.3)
 	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
 		var n := String(mi.name)
 		if n.ends_with("_glass"):

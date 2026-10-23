@@ -21,3 +21,4 @@ steam = 2.0
 steam_colour = Color(0.9411765, 0.972549, 1, 0.55)
 sparkles = 0.6
 sparkle_colour = Color(1, 1, 1, 1)
+opacity = 0.45
