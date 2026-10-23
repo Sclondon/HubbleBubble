@@ -819,8 +819,10 @@ func _animate_stick(dt: float) -> void:
 	_tip = _tip.lerp(want, minf(1.0, dt * (22.0 if stirring else 3.0)))
 	var flat_out := Vector3(_tip.x, 0, _tip.z)
 	var out := flat_out.normalized() if flat_out.length() > 0.05 else Vector3.BACK
-	var dip := _tip - Vector3(0, 0.12, 0)
-	var top := dip + (out * 0.4 + Vector3.UP + Vector3(0, 0, 0.35)).normalized() * 1.3 * STICK_SCALE
+	# (the spoon well down in the brew)
+	var dip := _tip - Vector3(0, 0.3, 0)
+	# standing nearly upright, leaning a little outward and away from you, so it clears the rim
+	var top := dip + (Vector3.UP + out * 0.22 + Vector3(0.06, 0, -0.12)).normalized() * 1.3 * STICK_SCALE
 	stick.global_position = global_transform * top
 	stick.look_at(global_transform * dip, Vector3(out.x, 0.0, out.z) if out.length() > 0.1 else Vector3.BACK)
 	var speed := (_tip - was).length() / maxf(dt, 0.001)

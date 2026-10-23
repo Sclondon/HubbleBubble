@@ -29,7 +29,9 @@ float vnoise(vec2 p) {
 
 float rings(vec3 p) {
 	// distance from the heart of the log (along Y), pushed about so the lines wander and stretch
-	float r = length(p.xz) * grain + vnoise(vec2(p.y * 6.0, atan(p.z, p.x) * 2.0)) * 2.5 + vnoise(vec2(p.y * 1.5, 3.0)) * 4.0;
+	// grain running along the stick: lines round it that wander a little as they go
+	float a = atan(p.z, p.x);
+	float r = a * grain / 12.0 + vnoise(vec2(p.y * 3.0, a * 1.5)) * 1.2 + vnoise(vec2(p.y * 0.8, a + 7.0)) * 0.6;
 	return fract(r);
 }
 
@@ -40,8 +42,8 @@ void vertex() {
 void fragment() {
 	float g = rings(lp);
 	float line = smoothstep(0.0, 0.25, g) * (1.0 - smoothstep(0.55, 1.0, g));
-	float fine = vnoise(vec2(lp.y * 140.0, atan(lp.z, lp.x) * 40.0));
-	vec3 c = mix(dark_wood, light_wood, line * 0.75 + fine * 0.25);
+	float fine = vnoise(vec2(lp.y * 12.0, atan(lp.z, lp.x) * 40.0));
+	vec3 c = mix(dark_wood, light_wood, 0.55 + line * 0.3 + fine * 0.15);
 	ALBEDO = c * mix(vec3(1.0), COLOR.rgb * 1.6, 0.25);
 	// the grain stands up a little
 	float e = 0.002;

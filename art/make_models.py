@@ -1536,8 +1536,9 @@ def build_props():
 
     # The stirring stick: a long wooden paddle. Origin at the top end; it runs along +Y to the blade.
     stick = tube("stick", (0, 0, 0), (0, 1.25, 0), 0.04, 0.035, seg=10, sub=1)
-    paint(stick, lambda co, n: lin("#b07a40").lerp(lin("#7a4a24"), 0.5 * (math.sin(co.y * 30) > 0.7)))
-    blade = egg("stick_blade", (0, 1.38, 0), (0.1, 0.18, 0.03), seg=12, rings=8, sub=1)
+    paint(stick, lambda co, n: lin("#b07a40"))
+    # a spoon at the end: a dished oval bowl
+    blade = egg("stick_blade", (0, 1.42, 0), (0.12, 0.17, 0.06), seg=14, rings=8, sub=1, shape=lambda v: Vector((v.x, v.y, -abs(v.z) * 0.8 + 0.02)))
     paint(blade, lambda co, n: lin("#9a6430"))
     knob = egg("stick_knob", (0, -0.02, 0), (0.055, 0.055, 0.055), seg=10, rings=6, sub=0)
     paint(knob, lambda co, n: lin("#7a4a24"))
