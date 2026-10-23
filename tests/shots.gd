@@ -28,7 +28,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	await _frames(80)
+	await _frames(240)
 	await _shot("title")
 	if only.begins_with("look_"):
 		main.start_free()
@@ -41,11 +41,36 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
 		quit()
 		return
+	if only == "steam":
+		main.camera.position = Vector3(0.0, 2.2, 1.9)
+		main.camera.look_at(Vector3(0, 1.7, 0))
+		main.set_process(false)
+		for i in 150:
+			main.hut.heat = 90.0
+			await process_frame
+		main.hut.brew.puffs(Vector3.ZERO, 8, Color(0.65, 0.45, 0.95, 0.9), 0.6, 1.0)
+		await _frames(20)
+		root.get_texture().get_image().save_png("%s/steam.png" % out)
+		quit()
+		return
+	if only == "fire":
+		# Low by the fire, the pot and the brew out of the way
+		main.hut.get_node("brew").visible = false
+		for c in main.hut.get_children():
+			if c.name.begins_with("cauldron") or (c is Node3D and c.scene_file_path.ends_with("cauldron.glb")):
+				c.visible = false
+		main.heat = 60.0
+		main.camera.position = Vector3(0, 1.0, 2.6)
+		main.camera.look_at(Vector3(0, 0.5, 0))
+		main.set_process(false)
+		for i in 30:
+			main.hut.heat = 60.0
+			await process_frame
+		root.get_texture().get_image().save_png("%s/fire.png" % out)
+		quit()
+		return
 	if only == "swamp":
-		main.start_game()
-		main.state = "done"
-		main.intro_t = 2.0
-		main.next_night()
+		main.visit_swamp()
 		await _frames(80)
 		root.get_texture().get_image().save_png("%s/swamp%s.png" % [out, "_wide" if wide else ""])
 		quit()

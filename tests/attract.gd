@@ -11,6 +11,7 @@ var _t := 0.0
 var _wait := 0.0
 var _fumbled := false
 var _shot_n := 0
+var _scoop := -1.0
 
 
 func _initialize() -> void:
@@ -54,6 +55,18 @@ func _tick() -> void:
 	# Keep a second customer coming so the tickets fill
 	if main.orders.size() < 2 and main._spawn_t > 2.5:
 		main._spawn_t = 2.5
+	# Scooping a jar of it: carried over, dipped till full, let go
+	if _scoop >= 0.0:
+		_scoop += dt
+		if _scoop > 0.35:
+			main._held_to = Vector3(0.15, Hut.CAULDRON_RIM + 0.12, 0.2)
+		if main._fill >= 1.0 and _scoop > 1.6:
+			main._held_to = Vector3(0.1, Hut.CAULDRON_RIM + 0.5, -0.4)
+		if main._fill >= 1.0 and _scoop > 2.0:
+			main.release()
+			_scoop = -1.0
+			_wait = 1.0
+		return
 	_wait -= dt
 	if _wait > 0.0 or main.spoil_t > 0.0:
 		return
@@ -83,12 +96,14 @@ func _tick() -> void:
 				_wait = 0.22
 		Book.STIR:
 			main.stir(want.dir * TAU * 1.6 * dt)
+			main._stir_seen = 0.25
+			main.hut.stir_at(Vector3(cos(main._stir_angle), 0, sin(main._stir_angle)) * 0.45)
 		Book.ZAP:
 			main.zap()
 			_wait = 0.8
 		Book.BOTTLE:
-			main.bottle()
-			_wait = 1.0
+			main.grab_bottle(Vector2.ZERO)
+			_scoop = 0.0
 
 
 ## How many of the recipe's steps are in the pot already (anything else in it: tipped out)

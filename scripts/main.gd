@@ -14,8 +14,8 @@ const KEY_STIR_SPEED := TAU * 1.4
 const MAX_STEPS := 8
 const N64_LINES := 270.0
 
-## "title", "intro", "play", "done", "over"
-var state := "title"
+## "play" (at the cauldron), "intro", "done", "over" (the cards of a night), "swamp", "tower" (the balcony)
+var state := "play"
 var paused := false
 var book_open := false
 var night := 1
@@ -30,8 +30,12 @@ var selected := -1
 var brew: Array = []
 ## Things found by brewing: effect -> {recipe, name}, written in the book
 var discoveries := {}
-## "shop" (the nights) or "free" (brewing whatever you like, tried out on the tower top)
-var mode := "shop"
+## "shop" (the counter open, a night on) or "free" (shut: brewing whatever you like, tried out on the balcony)
+var mode := "free"
+## Whether a run of nights is under way (it carries on from one night to the next until one is failed)
+var run_active := false
+## Black over everything while the view moves between the hut, the swamp and the balcony (0 to 1)
+var fade := 0.0
 ## How far along the step that's being done is (heat held, turns stirred), 0 to 1
 ## How near the heat held is to counting (0 to 1), and how far round the stick is in its turn
 var heat_fill := 0.0
@@ -96,6 +100,12 @@ var pick_k := 1.0
 var swamp_from := "night"
 var _held: Node3D
 var _held_which := 0
+## "bit" (an ingredient) or "bottle" (an empty jar to scoop the brew up in), and how full the jar is
+var _held_kind := "bit"
+var _fill := 0.0
+var _finger_stir := false
+var _stir_last := Vector2.INF
+var _moving := false
 var _held_to := Vector3.ZERO
 var _held_from := Vector2.ZERO
 var _last_added := -1
@@ -155,7 +165,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_frame)
 	_load()
 	_frame()
-	_to_title()
+	_to_hut()
 
 
 func _frame() -> void:
@@ -180,19 +190,21 @@ func _frame() -> void:
 		camera.fov = 60.0 if tall else 50.0
 		camera.global_transform = tower.global_transform * tower.camera_at
 		if tall:
-			camera.global_position += camera.global_basis.z * 0.6 + Vector3(0, 0.3, 0)
+			camera.global_position = tower.global_position + Vector3(0, 2.5, 4.7)
+			camera.look_at(tower.global_position + Vector3(0, 0.75, 0))
 	elif tall:
-		# Phone: framed by width; you look down over the pot at the table and the window
+		# Phone: framed by width; you lean over the pot and look down into it, the counter beyond
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
-		camera.fov = 52.0
+		camera.fov = 60.0
 		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.5, 0.6)
-		camera.position = Vector3(0, 2.6 + spare * 0.35, 2.95 + spare * 0.5)
-		camera.look_at(Vector3(0, 1.32, -1.5))
+		camera.position = Vector3(0, 3.35 + spare * 0.3, 1.6 + spare * 0.45)
+		camera.look_at(Vector3(0, 1.1, -1.35))
 	else:
+		# Wide: framed by height, close enough that the walls either side don't take over
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
-		camera.fov = 48.0
-		camera.position = Vector3(0, 2.85, 4.3)
-		camera.look_at(Vector3(0, 1.25, -1.4))
+		camera.fov = 60.0
+		camera.position = Vector3(0, 3.9, 3.4)
+		camera.look_at(Vector3(0, 1.36, -1.0))
 	if hud != null:
 		hud.layout()
 
@@ -254,6 +266,12 @@ func spot_screen(id: String) -> Vector2:
 ## Something in the hut tapped
 func tap(id: String) -> void:
 	match id:
+		"shutters":
+			toggle_shop()
+		"swamp_window":
+			visit_swamp()
+		"balcony":
+			visit_balcony()
 		"bellows":
 			pump()
 		"wand":
@@ -286,20 +304,40 @@ func cauldron_screen() -> Array:
 
 # --- the flow of a game ---
 
-func _to_title() -> void:
-	state = "title"
+## At the cauldron with the counter shut: brewing whatever you like, nobody waiting
+func _to_hut() -> void:
+	state = "play"
+	mode = "free"
+	paused = false
 	orders.clear()
 	selected = -1
 	_clear_customers()
+	hut.open_shop(false)
 	hut.fresh()
-	hut.stock(8)
-	heat = 30.0
+	_reset_brew()
+	_show_stock()
+	heat = 20.0
 	Sfx.music(false)
-	_say_witch(Book.rhyme("title"))
+
+
+## The counter shutters: thrown open, the shop opens for the night (a new run, or the next night of
+## this one); swung shut while a night's on, it ends there and then
+func toggle_shop() -> void:
+	if state == "play" and mode == "free":
+		if not run_active:
+			start_game()
+		else:
+			mode = "shop"
+			_start_night()
+		hut.open_shop(true)
+		Sfx.play("tap", 0.7)
+	elif mode == "shop" and state in ["play", "intro"]:
+		_close_shop()
 
 
 func start_game() -> void:
 	mode = "shop"
+	run_active = true
 	for i in 8:
 		stock[i] = maxi(stock[i], 4)
 	night = 1
@@ -307,6 +345,7 @@ func start_game() -> void:
 	learned = {}
 	done_kinds = {}
 	combo = 0
+	hut.open_shop(true)
 	_start_night()
 
 
@@ -322,6 +361,7 @@ func _start_night() -> void:
 	lost = 0
 	heat = 10.0
 	hut.fresh()
+	_reset_brew()
 	_show_stock()
 	clock = Book.night_length(night)
 	_spawn_t = 1.2
@@ -329,61 +369,74 @@ func _start_night() -> void:
 	news = ""
 	match night:
 		1:
-			news = "Do each step in order: tap the jars, pump the HEAT to the level shown, then BOTTLE it!"
+			news = "Customers will ask for potions by name. Look them up in the book!"
 		2:
-			news = "New: stirring!  Drag round the pot."
+			news = "New: stirring! Drag the stick round the pot."
 		3:
 			news = "New: the magic wand, and Moon Petals!"
 		4:
-			news = "Potions you know now hide their recipes. Check the book!"
-		5:
-			news = "The busiest night yet!"
-	if night == 2:
-		_say_witch(Book.rhyme("new_stir"))
-	elif night == 3:
-		_say_witch(Book.rhyme("new_zap"))
-	elif night == 4:
-		_say_witch(Book.rhyme("new_hidden"))
-	else:
-		_say_witch(Book.rhyme("night"))
+			news = "The busiest nights are coming."
 	Sfx.play("night")
 	hut.night_progress(0.0)
 
 
-## Brewing whatever you like, no customers and no clock; bottled brews are tried out on the tower
+## Brewing whatever you like, no customers and no clock; bottled brews are tried out on the balcony
 func start_free() -> void:
-	mode = "free"
-	state = "play"
-	paused = false
-	orders.clear()
-	selected = -1
-	_clear_customers()
-	hut.fresh()
-	_reset_brew()
-	_show_stock()
-	heat = 20.0
-	Sfx.music(true)
-	_say_witch(Book.rhyme("free"))
+	_to_hut()
 
 
+## Moves the view somewhere else in a blink: a dip to black, `then` called in the dark, and back up
+func _move(then: Callable) -> void:
+	if _moving:
+		return
+	_moving = true
+	var tw := create_tween()
+	tw.tween_property(self, "fade", 1.0, 0.22)
+	tw.tween_callback(func() -> void:
+		then.call()
+		_frame())
+	tw.tween_property(self, "fade", 0.0, 0.3)
+	tw.tween_callback(func() -> void: _moving = false)
+
+
+## Out onto the balcony, where a witch tries the brew
 func _to_tower(result: Dictionary) -> void:
-	state = "tower"
 	tower_result = result
 	tower_new = _discovered_now
 	tower_t = 0.0
 	hut.fresh()
 	_reset_brew()
-	_frame()
-	tower.try_out(result)
+	_move(func() -> void:
+		state = "tower"
+		tower.try_out(result))
 
 
-## Back down from the tower to brew another
+## Through the door onto the balcony with nothing to try: the witch waits there to be brought something
+func visit_balcony() -> void:
+	if not _away_ok():
+		return
+	tower_result = {}
+	tower_t = 9.0
+	_move(func() -> void:
+		state = "tower"
+		tower.wait())
+
+
+## Back in from the balcony
 func back_from_tower() -> void:
 	if state != "tower" or tower_t < 1.2:
 		return
-	state = "play"
-	_frame()
 	Sfx.play("tap")
+	_move(func() -> void: state = "play")
+
+
+## The swamp and the balcony are only for when the counter's shut
+func _away_ok() -> bool:
+	if state != "play" or mode != "free" or paused:
+		if state == "play" and mode == "shop":
+			Sfx.play("huff", 1.5, -8.0)
+		return false
+	return true
 
 
 ## Still warming up: the first moments, and while the book's pictures are taken
@@ -391,26 +444,15 @@ func loading() -> bool:
 	return _boot_t < 0.8 or (album != null and album.is_processing() and _boot_t < 8.0)
 
 
-## From the title: off to the swamp to gather, whenever you like (what's gathered keeps)
+## Out of the back window to the swamp, to gather (what's gathered keeps)
 func visit_swamp() -> void:
+	if not _away_ok():
+		return
 	swamp_from = "visit"
-	mode = "shop"
-	state = "swamp"
-	swamp_t = 9999.0
-	swamp.open_for(8)
-	_frame()
-	Sfx.music(true, 0.9)
-
-
-## Between nights: off to the swamp to gather what the next night will want
-func _to_swamp() -> void:
-	swamp_from = "night"
-	state = "swamp"
-	swamp_t = SWAMP_TIME
-	swamp.open_for(Book.ingredients_on(night + 1))
-	_frame()
-	Sfx.music(true, 0.9)
-	_say_witch(Book.rhyme("swamp"))
+	_move(func() -> void:
+		state = "swamp"
+		swamp.open_for(8)
+		Sfx.music(true, 0.9))
 
 
 ## Gathers whatever's tapped in the swamp
@@ -429,26 +471,21 @@ func gather_at(at: Vector2) -> void:
 		return
 	var i := int(best.substr(6))
 	if stock[i] >= MAX_STOCK:
-		_float("Full!", at, Color("ffd0a0"))
+		Sfx.play("huff", 1.5, -8.0)
 		return
 	if swamp.gather(i):
 		stock[i] += 1
-		_float("+1 %s" % Book.INGREDIENTS[i].name, at + Vector2(0, -40), Color("c8f0a0"))
 
 
-## Done gathering: on to the next night
+## Back in through the window
 func leave_swamp() -> void:
 	if state != "swamp":
 		return
 	Sfx.music(false)
 	_save()
-	if swamp_from == "visit":
-		_to_title()
-		_frame()
-		return
-	night += 1
-	_start_night()
-	_frame()
+	_move(func() -> void:
+		state = "play"
+		_show_stock())
 
 
 func begin_play() -> void:
@@ -466,14 +503,14 @@ func _close_shop() -> void:
 	orders.clear()
 	selected = -1
 	Sfx.music(false)
+	hut.open_shop(false)
 	if night_coins >= Book.quota(night):
 		state = "done"
 		Sfx.play("win")
-		_say_witch(Book.rhyme("night_done"))
 	else:
 		state = "over"
 		Sfx.play("lose")
-		_say_witch(Book.rhyme("game_over"))
+		run_active = false
 		if score > best and not testing:
 			best = score
 			_save()
@@ -483,30 +520,26 @@ func _close_shop() -> void:
 	intro_t = 0.0
 
 
-## A tap on the card at the end of a night
+## A tap on the card at the end of a night: back to the cauldron with the counter shut (open it
+## again for the next night)
 func next_night() -> void:
 	if intro_t < 1.0:
 		return
 	if state == "done":
-		_to_swamp()
+		night += 1
 	elif state == "over":
-		_to_title()
+		night = 1
+	else:
+		return
+	_to_hut()
 
 
 func toggle_pause() -> void:
 	if state in ["play", "intro", "tower", "swamp"]:
 		paused = not paused
 		book_open = false
-		Sfx.music(not paused and state == "play")
+		Sfx.music(not paused and state == "play" and mode == "shop")
 		Sfx.play("tap")
-
-
-func quit_to_title() -> void:
-	paused = false
-	if state in ["tower", "swamp"]:
-		state = "play"
-		_frame()
-	_to_title()
 
 
 func toggle_book() -> void:
@@ -536,7 +569,21 @@ func _process(dt: float) -> void:
 	_boot_t += dt
 	_update_speech(dt)
 	if is_instance_valid(_held):
-		hut.carry(_held, _held_to, dt)
+		var to := _held_to
+		if _held_kind == "bottle" and hut.over_pot(_held.global_position) and _brewing() and not brew.is_empty():
+			# Dipped into the brew, it fills (glugging) till it's full
+			to.y = Hut.BREW_LEVEL - 0.08
+			if _held.global_position.y < Hut.BREW_LEVEL + 0.12 and _fill < 1.0:
+				_fill = minf(1.0, _fill + dt / 0.8)
+				hut.fill_bottle(_held, _fill, Lore.resolve(brew).colour)
+				hut.brew.ripple(Vector2(_held.global_position.x, _held.global_position.z), 0.25)
+				if randf() < dt * 8.0:
+					Sfx.play("bubble", randf_range(1.2, 1.6), -6.0)
+				if _fill >= 1.0:
+					Sfx.play("cork", 1.2, -4.0)
+		elif _held_kind == "bottle" and _fill >= 1.0:
+			to.y = maxf(to.y, Hut.CAULDRON_RIM + 0.25)
+		hut.carry(_held, to, dt)
 	for f in floaters:
 		f.t += dt
 	floaters = floaters.filter(func(f: Dictionary) -> bool: return f.t < 1.4)
@@ -548,15 +595,11 @@ func _process(dt: float) -> void:
 		_play(dt)
 	elif state == "tower":
 		tower_t += dt
-	elif state == "swamp":
-		swamp_t -= dt
-		if swamp_t <= 0.0:
-			leave_swamp()
-	else:
-		heat = move_toward(heat, 30.0 if state == "title" else 12.0, dt * 5.0)
+	elif state != "swamp":
+		heat = move_toward(heat, 12.0, dt * 5.0)
 	hut.heat = heat
 	_bubble_t -= dt
-	if _bubble_t < 0.0 and state != "title":
+	if _bubble_t < 0.0 and state in ["play", "intro"]:
 		_bubble_t = randf_range(0.3, 1.2) / (0.4 + heat / 60.0)
 		Sfx.play("bubble", randf_range(0.7, 1.5), -14.0 + heat / 12.0)
 
@@ -599,7 +642,7 @@ func _tend(dt: float) -> void:
 	heat = maxf(0.0, heat - (4.5 + heat * 0.045) * dt)
 	_keys_stir(dt)
 	_stir_seen = maxf(0.0, _stir_seen - dt)
-	hut.stirring = _stir_seen > 0.0
+	hut.stirring = _finger_stir or _stir_seen > 0.0
 	if spoil_t > 0.0:
 		spoil_t -= dt
 		if spoil_t <= 0.0:
@@ -748,10 +791,25 @@ func grab(which: int, at: Vector2) -> void:
 	if is_instance_valid(_held):
 		_held.queue_free()
 	_held = hut.hold(which)
+	_held_kind = "bit"
 	_held_which = which
 	_held_from = at
 	_held_to = _held.global_position
 	Sfx.play("tap", 0.8)
+
+
+## Takes an empty jar off the tray, to dip in the brew and fill by hand
+func grab_bottle(at: Vector2) -> void:
+	if not _brewing():
+		return
+	if is_instance_valid(_held):
+		_held.queue_free()
+	_held = hut.hold_bottle()
+	_held_kind = "bottle"
+	_fill = 0.0
+	_held_from = at
+	_held_to = _held.global_position
+	Sfx.play("tap", 0.7)
 
 
 func drag_to(at: Vector2) -> void:
@@ -769,20 +827,27 @@ func release() -> void:
 		return
 	var bit := _held
 	_held = null
-	if hut.over_pot(bit.global_position) and _brewing():
-		hut.drop(bit, _held_which, _land)
-	else:
-		hut.drop(bit, _held_which, _land)
-		if not hut.over_pot(bit.global_position):
-			_float("Drop it in the pot!", screen_of(bit.global_position), Color("ffe8a0"))
+	if _held_kind == "bottle":
+		# Full, it's handed over (or taken out to the balcony); not full, it goes back on the tray
+		if _fill >= 1.0 and _brewing() and _bottle_from(bit.global_position):
+			bit.queue_free()
+		else:
+			hut.return_bottle(bit)
+		_fill = 0.0
+		return
+	hut.drop(bit, _held_which, _land)
 
 
 ## Where a finger on the screen is, out over the pot at the height things are carried
 func _over(at: Vector2) -> Vector3:
+	return _on_plane(at, Hut.CAULDRON_RIM + 0.12)
+
+
+## Where a point on the screen is on the level plane at `height`
+func _on_plane(at: Vector2, height: float) -> Vector3:
 	var p := at * (Vector2(view.size) / get_viewport().get_visible_rect().size)
 	var from := camera.project_ray_origin(p)
 	var dir := camera.project_ray_normal(p)
-	var height := Hut.CAULDRON_RIM + 0.12
 	if absf(dir.y) < 0.001:
 		return from
 	var t := (height - from.y) / dir.y
@@ -829,29 +894,32 @@ func zap() -> void:
 
 
 ## Bottles what's in the pot: in the shop it goes to the customer, brewing freely it goes up the tower
+## (A key: scooped up and handed over at once)
 func bottle() -> void:
-	if not _brewing():
-		return
+	if _brewing():
+		_bottle_from(Vector3(0, Hut.CAULDRON_RIM + 0.2, 0))
+
+
+## A jar full of the brew, held at `from`: sold to the customer at the window, or (the counter shut)
+## taken out to the balcony to be tried. False if there's nothing to bottle or nobody to have it.
+func _bottle_from(from: Vector3) -> bool:
 	if brew.is_empty():
 		Sfx.play("huff", 1.4, -6.0)
 		hut.poke("bottle", true)
-		_float("The pot's empty!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ffd0a0"))
-		return
+		return false
+	if mode == "shop" and selected_order().is_empty():
+		Sfx.play("huff", 1.4, -6.0)
+		hut.poke("bottle", true)
+		return false
 	var result := Lore.resolve(brew)
 	_discovered_now = not discoveries.has(result.effect) and result.effect != "nothing"
 	_discover(result)
 	if mode == "free":
-		hut.poke("bottle")
 		Sfx.play("cork")
 		_to_tower(result)
-		return
-	if selected_order().is_empty():
-		Sfx.play("huff", 1.4, -6.0)
-		hut.poke("bottle", true)
-		_float("Nobody to sell it to!", screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.6, 0)), Color("ffd0a0"))
-		return
-	hut.poke("bottle")
-	_serve(result)
+		return true
+	_serve(result, from)
+	return true
 
 
 ## The ladle dragged round by `angle` radians (positive with the sun)
@@ -860,9 +928,7 @@ func stir(angle: float) -> void:
 	if not _brewing() or absf(angle) < 0.0001:
 		return
 	_stir_angle += angle
-	hut.stir_angle = _stir_angle
-	_stir_seen = 0.25
-	hut.stir_to(_stir_angle)
+	hut.brew.spin = _stir_angle
 	_stir_sound += absf(angle)
 	if _stir_sound > PI * 0.6:
 		_stir_sound = 0.0
@@ -906,6 +972,26 @@ func _keys_stir(dt: float) -> void:
 		d -= 1.0
 	if d != 0.0:
 		stir(d * KEY_STIR_SPEED * dt)
+		_stir_seen = 0.25
+		hut.stir_at(Vector3(cos(_stir_angle), 0, sin(_stir_angle)) * 0.45)
+
+
+## A finger on the brew: the stick's tip goes where it is, and going round the middle stirs
+func stir_touch(at: Vector2) -> void:
+	if not _brewing():
+		return
+	var p := _on_plane(at, Hut.BREW_LEVEL)
+	hut.stir_at(p)
+	_finger_stir = true
+	var flat := Vector2(p.x, p.z).limit_length(Hut.BREW_R - 0.16)
+	if flat.length() > 0.12 and _stir_last != Vector2.INF and _stir_last.length() > 0.12:
+		stir(wrapf(flat.angle() - _stir_last.angle(), -PI, PI))
+	_stir_last = flat
+
+
+func stir_release() -> void:
+	_finger_stir = false
+	_stir_last = Vector2.INF
 
 
 ## Something was done to the brew: right if it's the next step, spoilt if not
@@ -974,7 +1060,7 @@ func _reset_brew() -> void:
 ## Hands the brew over. What it does is what counts: the potion she asked for, made any way at all,
 ## pays (more for a strong one, and a tip for speed); anything else she drinks anyway, and you see
 ## what it does to her before she storms off
-func _serve(result: Dictionary) -> void:
+func _serve(result: Dictionary, from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)) -> void:
 	var i := selected
 	var o := orders[i]
 	var wanted: String = Book.POTIONS[o.potion].effect
@@ -994,28 +1080,27 @@ func _serve(result: Dictionary) -> void:
 		_float("+%d" % coins, at, Color("ffe060"), true)
 		if combo > 1:
 			_float("Combo x%d!" % combo, at + Vector2(0, 50), Color("a0ffb0"))
-		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.happy())
+		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.happy(), from)
 		_say_folk(Book.line("thanks"), o.who.voice, o.customer, true)
 	else:
 		combo = 0
 		lost += 1
 		Sfx.play("huff")
 		_float(Lore.name_of(result) + "?!", screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.3, 0.3)), Color("ff9a8a"))
-		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.drink(result, true))
+		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.drink(result, true), from)
 		_say_folk(Book.line("wrong"), o.who.voice, o.customer, true)
 	_remove_order(i)
 	hut.fresh()
 	_reset_brew()
 
 
-func _fly_bottle(col: Color, customer: Witch, then: Callable) -> void:
+func _fly_bottle(col: Color, customer: Witch, then: Callable, from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)) -> void:
 	var b := Node3D.new()
 	b.add_child(Models.make("potion", Shape.mat(0.3)))
 	var liquid := Shape.mat(0.35)
 	liquid.set_shader_parameter("tint", Shape.lin3(col))
 	b.add_child(Models.make("potion_liquid", liquid))
 	view.add_child(b)
-	var from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)
 	var to := Hut.WINDOW_HEAD + Vector3(0.2, -0.45, 0.45)
 	var tw := create_tween()
 	tw.tween_method(func(t: float) -> void:
@@ -1083,12 +1168,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				toggle_pause()
 			return
-	if state == "title":
-		if key.keycode in [KEY_SPACE, KEY_ENTER]:
-			start_game()
-		elif key.keycode == KEY_F:
-			start_free()
-		return
 	if state == "tower":
 		if key.keycode in [KEY_SPACE, KEY_ENTER]:
 			back_from_tower()
@@ -1124,6 +1203,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			toggle_book()
 		KEY_BACKSPACE, KEY_DELETE:
 			tip_out()
+		KEY_O:
+			toggle_shop()
+		KEY_G:
+			visit_swamp()
+		KEY_T:
+			visit_balcony()
 
 
 func _load() -> void:

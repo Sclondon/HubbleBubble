@@ -20,10 +20,12 @@ func _initialize() -> void:
 func _run() -> void:
 	await _seconds(1.0)
 	main.discoveries.clear()
-	_check(main.state == "title", "starts on the title")
+	_check(main.state == "play" and main.mode == "free", "starts at the cauldron, the counter shut")
 	await _frames(2)
-	await _touch((main.hud.buttons["go_shop"].rect as Rect2).get_center())
-	_check(main.state == "intro", "Open the Shop starts night 1")
+	await _touch(_centre("shutters"))
+	_check(main.state == "intro" and main.night == 1, "tapping the shutters opens the shop: night 1")
+	await _seconds(1.0)
+	_check(main.hut.shutters > 0.95, "and the shutters swing open")
 	await _touch(Vector2(360, 700))
 	_check(main.state == "play" and main.mode == "shop", "a tap opens the shop")
 	await _frames(100)
@@ -119,19 +121,44 @@ func _run() -> void:
 	_check(main.heat > heat0, "tapping the bellows heats the fire")
 	main.heat = 35.0
 	await _seconds(1.3)
-	var cs := main.cauldron_screen()
-	var c: Vector2 = cs[0]
-	var r: float = cs[1] * 0.6
-	_send_touch(c + Vector2(r, 0), true)
+	var c := main.screen_of(Vector3(0, Hut.BREW_LEVEL, 0))
+	var rx := absf(main.screen_of(Vector3(0.45, Hut.BREW_LEVEL, 0)).x - c.x)
+	var ry := absf(main.screen_of(Vector3(0, Hut.BREW_LEVEL, 0.45)).y - c.y)
+	_send_touch(c + Vector2(rx, 0), true)
 	for i in 28:
 		var a := TAU * (i + 1) / 24.0
-		_send_drag(c + Vector2(cos(a), sin(a)) * r)
+		_send_drag(c + Vector2(cos(a) * rx, sin(a) * ry))
 		await process_frame
-	_send_touch(c + Vector2(r, 0), false)
+	var last := c + Vector2(cos(TAU * 28 / 24.0) * rx, sin(TAU * 28 / 24.0) * ry)
+	await _frames(10)
+	var want := main._on_plane(last, Hut.BREW_LEVEL)
+	_check(Vector2(main.hut._tip.x, main.hut._tip.z).distance_to(Vector2(want.x, want.z)) < 0.06, "the stick's tip follows the finger through the brew")
+	_send_touch(last, false)
 	_check(main.brew[-1].kind == Book.STIR and main.brew[-1].dir == 1, "dragging round the pot clockwise stirs it sunwise")
 	before = main.served
-	await _touch(_centre("bottle"))
-	_check(main.served == before + 1, "the bottles serve it")
+	# A jar off the tray, dipped in the pot till it's full, and let go: it's handed over
+	var tray := _centre("bottle")
+	_send_touch(tray, true)
+	for i in 12:
+		_send_drag(tray.lerp(c, (i + 1) / 12.0))
+		await process_frame
+	await _seconds(0.3)
+	_check(main._held_kind == "bottle" and main._fill > 0.0 and main._fill < 1.0, "a jar dipped in the brew starts to fill (%.2f)" % main._fill)
+	await _seconds(1.0)
+	_check(main._fill >= 1.0, "held there, it fills up")
+	_send_touch(c, false)
+	await _frames(3)
+	_check(main.served == before + 1, "let go full, it's handed to the customer")
+	# Let go before it's full, it goes back on the tray
+	_order("Sleeping Draught")
+	await _add("eye")
+	_send_touch(tray, true)
+	for i in 12:
+		_send_drag(tray.lerp(c, (i + 1) / 12.0))
+		await process_frame
+	_send_touch(c, false)
+	await _frames(3)
+	_check(main.orders.size() == 1 and not main.brew.is_empty(), "let go half full, nothing's sold")
 
 	# The book: opens at the contents, turns to a potion's page
 	await _touch(_centre("book"))
@@ -165,16 +192,25 @@ func _run() -> void:
 	await _frames(5)
 	_check(main.state == "done", "making the quota shuts the shop for the night")
 	await _seconds(1.1)
+	var was_night := main.night
 	main.next_night()
-	_check(main.state == "swamp", "then it is off to the swamp to gather")
-	await _frames(3)
+	_check(main.state == "play" and main.mode == "free" and main.night == was_night + 1, "then it's back to the cauldron, the counter shut")
+	await _seconds(1.0)
+	_check(main.hut.shutters < 0.05, "the shutters swung shut")
+	# Out of the back window to the swamp
+	await _touch(_centre("swamp_window"))
+	await _seconds(0.7)
+	_check(main.state == "swamp", "tapping the back window goes out to the swamp")
 	var had: int = main.stock[0]
 	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
 	_check(main.stock[0] == had + 1, "a tap on the newts gathers an Eye of Newt (%d to %d)" % [had, main.stock[0]])
 	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
 	_check(main.stock[0] == had + 1, "and it takes a moment to grow back")
 	main.leave_swamp()
-	_check(main.state == "intro", "and the next night begins")
+	await _seconds(0.7)
+	_check(main.state == "play", "and back in through the window")
+	await _touch(_centre("shutters"))
+	_check(main.state == "intro" and main.night == was_night + 1, "open the shutters again: the next night")
 	main.begin_play()
 	main.night_coins = 0
 	main.clock = 0.05
@@ -182,12 +218,11 @@ func _run() -> void:
 	_check(main.state == "over", "missing the quota ends the game")
 	await _seconds(1.1)
 	main.next_night()
-	_check(main.state == "title", "and goes back to the title")
+	_check(main.state == "play" and main.mode == "free" and main.night == 1 and not main.run_active, "and it's back to the cauldron, night 1 next")
 
-	# Brewing freely: a bottle goes up the tower, a witch drinks it, it's written in the book
+	# Brewing freely (the counter shut): a bottle goes out to the balcony, a witch drinks it, it's written in the book
 	await _frames(2)
-	await _touch((main.hud.buttons["go_free"].rect as Rect2).get_center())
-	_check(main.state == "play" and main.mode == "free" and main.orders.is_empty(), "Brew Freely: no customers, no clock")
+	_check(main.state == "play" and main.mode == "free" and main.orders.is_empty(), "the counter shut: no customers, no clock")
 	await _add("wing")
 	await _add("shroom")
 	main.heat = 55.0
@@ -195,12 +230,21 @@ func _run() -> void:
 	main.zap()
 	await _frames(3)
 	main.bottle()
-	_check(main.state == "tower", "bottled, it goes up the tower")
+	await _seconds(0.5)
+	_check(main.state == "tower", "bottled, it's taken out to the balcony")
 	_check(main.discoveries.has("floating"), "Floating is written in the book")
 	await _seconds(2.2)
 	_check(main.tower.tester._effect == "floating", "the witch up there drinks it and floats")
 	await _touch(Vector2(360, 700))
-	_check(main.state == "play" and main.mode == "free", "a tap brings you back down to brew another")
+	await _seconds(0.7)
+	_check(main.state == "play" and main.mode == "free", "a tap brings you back in to brew another")
+	await _touch(_centre("balcony"))
+	await _seconds(0.7)
+	_check(main.state == "tower", "the balcony door goes out there too")
+	await _seconds(1.3)
+	await _touch(Vector2(360, 700))
+	await _seconds(0.7)
+	_check(main.state == "play", "and back in")
 
 	print("FAILURES: %d" % failures if failures else "ALL PASSED")
 	quit(1 if failures else 0)

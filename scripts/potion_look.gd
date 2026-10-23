@@ -32,9 +32,12 @@ extends Resource
 @export_range(0.0, 3.0) var bubbles := 1.0
 @export_range(0.2, 3.0) var bubble_size := 1.0
 @export var bubble_colour := Color(0.7, 1.0, 0.85)
+## How solid a bubble's skin is (0 all but invisible, 1 solid), and how bright its rim and glint
+@export_range(0.0, 1.0) var bubble_opacity := 0.75
+@export_range(0.0, 2.0) var bubble_shine := 1.0
 
 @export_group("Steam")
-## How much rises off it (with the heat), and its colour
+## How many streamers wind up off it (with the heat), and their colour (alpha: how see-through)
 @export_range(0.0, 3.0) var steam := 1.0
 @export var steam_colour := Color(0.85, 0.95, 0.9, 0.55)
 

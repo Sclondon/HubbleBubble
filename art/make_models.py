@@ -839,97 +839,47 @@ def build_props():
     rnd = random.Random(11)
     IRON, IRON_L = "#2c2634", "#5d5470"
 
-    # The cauldron: a fat iron belly on three stubby feet, a rolled lip, a dark inside, two ring handles.
-    # The rim is at 1.36 and the brew sits at 1.24 inside it (the game puts the brew's surface there).
-    belly = lathe("cauldron", [(0.32, 0.2, 0.2), (0.4, 0.55, 0.55), (0.6, 0.86, 0.86), (0.85, 0.98, 0.98), (1.08, 0.94, 0.94),
-                               (1.25, 0.84, 0.84), (1.33, 0.8, 0.8)], seg=28, sub=2, cap_top=False,
-                  wobble=lambda a, z: 0.008 * math.sin(a * 13 + z * 20))
+    # The cauldron, after Banjo-Kazooie's: a fat round pot of rusty copper-brown, warm where the
+    # light falls and dark underneath, a thick band of rim studded with rivets, flat golden handles
+    # either side and four stubby round feet. Nothing else on it.
+    # The rim is at about 1.36-1.40 and the brew sits at 1.24 inside it (the game puts the brew's surface there).
+    BROWN, BROWN_L, BROWN_D = "#a8522c", "#f0944c", "#4a2214"
+    belly = lathe("cauldron", [(0.26, 0.2, 0.2), (0.32, 0.55, 0.55), (0.46, 0.84, 0.84), (0.7, 1.0, 1.0), (0.95, 1.02, 1.02),
+                               (1.12, 0.94, 0.94), (1.2, 0.9, 0.9)], seg=32, sub=2, cap_top=False)
 
-    def iron(co, n):
-        c = lin(IRON).lerp(lin(IRON_L), max(0.0, n.z) * 0.6 + max(0.0, (co.z - 0.3) / 1.0) * 0.25)
-        if 0.5 < co.z < 0.62 and math.sin(math.atan2(co.y, co.x) * 7) > 0.85:
-            c = c.lerp(lin("#4a7a5a"), 0.5)
+    def copper(co, n):
+        up = max(0.0, n.z) * 0.5 + max(0.0, min(1.0, (co.z - 0.3) / 0.9)) * 0.5
+        c = lin(BROWN_D).lerp(lin(BROWN), min(1.0, up * 1.6)).lerp(lin(BROWN_L), max(0.0, up - 0.55) * 1.4)
+        # a little rust, mottled
+        rust = math.sin(co.x * 9.0 + co.z * 4.0) * math.sin(co.y * 11.0 - co.z * 6.0)
+        if rust > 0.55:
+            c = c.lerp(lin("#5a2a18"), 0.35)
         return c
-    paint(belly, iron)
-    inside = lathe("cauldron_in", [(0.9, 0.7, 0.7), (1.1, 0.84, 0.84), (1.25, 0.8, 0.8), (1.33, 0.78, 0.78)], seg=28, sub=1, cap_top=False)
-    paint(inside, lambda co, n: lin("#0e0a12"))
-    lip = ring("cauldron_lip", (0, 0, 1.36), 0.81, 0.07, seg=40, sides=8)
-    paint(lip, lambda co, n: lin(IRON_L).lerp(lin("#8a80a0"), max(0.0, n.z) * 0.6))
-    feet = []
-    for k in range(3):
-        a = 2 * math.pi * k / 3 + 0.5
-        top = Vector((math.cos(a) * 0.5, math.sin(a) * 0.5, 0.45))
-        foot = grow("cauldron_foot", [top, top * Vector((1.25, 1.25, 0)) + Vector((0, 0, 0.12)), top * Vector((1.35, 1.35, 0)) + Vector((0, 0, 0.02))],
-                    [(0, 1), (1, 2)], [0.09, 0.07, (0.1, 0.06)], sub=1)
-        paint(foot, lit(plain(IRON_L, IRON, 0.0, 0.45)))
-        feet.append(foot)
+    paint(belly, copper)
+    inside = lathe("cauldron_in", [(0.9, 0.7, 0.7), (1.1, 0.82, 0.82), (1.25, 0.8, 0.8), (1.36, 0.8, 0.8)], seg=32, sub=1, cap_top=False)
+    paint(inside, lambda co, n: lin("#120806"))
+    rim = lathe("cauldron_rim", [(1.12, 0.92, 0.92), (1.17, 0.97, 0.97), (1.35, 0.97, 0.97), (1.4, 0.93, 0.93), (1.41, 0.86, 0.86),
+                                 (1.39, 0.8, 0.8), (1.33, 0.79, 0.79)], seg=40, sub=1, cap_top=False, cap_bottom=False)
+    paint(rim, lambda co, n: lin("#4a2214").lerp(lin("#8a4a28"), max(0.0, n.z) * 0.7 + 0.15))
+    extra = [rim]
+    for k in range(18):
+        a = 2 * math.pi * k / 18
+        rivet = egg("cauldron_rivet", (math.cos(a) * 0.975, math.sin(a) * 0.975, 1.26), (0.035, 0.035, 0.035), seg=8, rings=5, sub=0)
+        paint(rivet, lambda co, n: lin("#9a94a8").lerp(lin("#f0ecf8"), max(0.0, n.z) * 0.8))
+        extra.append(rivet)
     for sgn in (1, -1):
-        h = ring("cauldron_handle", (sgn * 0.99, 0, 1.15), 0.13, 0.03, seg=16, sides=6, rot=Matrix.Rotation(math.pi / 2, 3, "X"))
-        paint(h, lit(plain(IRON_L)))
-        feet.append(h)
-        lug = egg("cauldron_lug", (sgn * 0.93, 0, 1.26), (0.06, 0.08, 0.06), seg=10, rings=6, sub=0)
-        paint(lug, lit(plain(IRON_L)))
-        feet.append(lug)
-    # A little flair: a gold band of runes round the belly, a grinning skull boss on the front,
-    # claws for feet, and green drips that have run over the lip and set
-    band = lathe("cauldron_band", [(0.68, 0.955, 0.955), (0.74, 0.99, 0.99), (0.8, 0.99, 0.99), (0.86, 0.975, 0.975)], seg=40, sub=0, cap_top=False, cap_bottom=False)
-    paint(band, lambda co, n: lin("#c89a3a").lerp(lin("#f2d070"), max(0.0, n.z * 0.5 + 0.3)))
-    extra = [band]
-    for k in range(14):
-        a = 2 * math.pi * k / 14
-        shape_k = k % 3
-        p = Vector((math.cos(a) * 1.0, math.sin(a) * 1.0, 0.77))
-        rot = Matrix.Rotation(a + math.pi / 2, 3, "Z")
-        if shape_k == 0:
-            rune = box("glow_rune", p, (0.05, 0.03, 0.09), rot=rot)
-        elif shape_k == 1:
-            rune = box("glow_rune", p, (0.09, 0.03, 0.03), rot=rot @ Matrix.Rotation(0.6, 3, "Y"))
-        else:
-            rune = egg("glow_rune", p, (0.035, 0.03, 0.035), seg=6, rings=4, sub=0)
-        paint(rune, lambda co, n: lin("#7aff5a"))
-        extra.append(rune)
-    skull_c = Vector((0, -1.02, 1.02))
-    skull = egg("cauldron_skull", skull_c, (0.16, 0.1, 0.15), seg=12, rings=8, sub=1, shape=lambda v: Vector((v.x * (1.0 - 0.3 * max(0.0, -v.z / 0.15)), v.y, v.z)))
-    paint(skull, lambda co, n: lin("#e8dcb8").lerp(lin("#a89870"), 0.4 * max(0.0, -n.z)))
-    extra.append(skull)
-    for sgn in (1, -1):
-        socket = egg("glow_socket", skull_c + Vector((sgn * 0.055, -0.08, 0.03)), (0.035, 0.02, 0.04), seg=8, rings=5, sub=0)
-        paint(socket, lambda co, n: lin("#7aff5a"))
-        extra.append(socket)
+        # A flat golden tab of a handle, with a dark slot through it
+        tab = box("cauldron_handle", (sgn * 1.04, 0, 1.02), (0.1, 0.36, 0.42), bevel=0.04)
+        paint(tab, lambda co, n: lin("#c8781e").lerp(lin("#ffcf5a"), max(0.0, n.z) * 0.5 + max(0.0, abs(n.x)) * 0.4))
+        slot = box("cauldron_slot", (sgn * 1.09, 0, 1.08), (0.04, 0.2, 0.14), bevel=0.02)
+        paint(slot, lambda co, n: lin("#3a1a0a"))
+        extra += [tab, slot]
     for k in range(4):
-        tooth = box("skull_tooth", skull_c + Vector((-0.045 + k * 0.03, -0.085, -0.09)), (0.022, 0.02, 0.035))
-        paint(tooth, lambda co, n: lin("#f4ecd0"))
-        extra.append(tooth)
-    for k in range(9):
-        a = 2 * math.pi * k / 9 + 0.3
-        if abs(math.sin(a) + 1.0) < 0.35:
-            continue
-        top = Vector((math.cos(a) * 0.86, math.sin(a) * 0.86, 1.36))
-        length = 0.12 + 0.12 * ((k * 7) % 3)
-        drip = grow("drip", [top, top * Vector((1.06, 1.06, 1.0)) - Vector((0, 0, 0.06)), top * Vector((1.11, 1.11, 1.0)) - Vector((0, 0, length))],
-                    [(0, 1), (1, 2)], [0.05, 0.03, (0.035, 0.035)], sub=1)
-        paint(drip, lambda co, n: lin("#4ab83a").lerp(lin("#2a6a2a"), 0.4 * max(0.0, -n.z)))
-        extra.append(drip)
-    out["cauldron"] = [belly, inside, lip] + feet + extra
-    # Claw feet instead of the plain ones
-    for f in feet[:3]:
-        out["cauldron"].remove(f)
-    for k in range(3):
-        a = 2 * math.pi * k / 3 + 0.5
-        ankle = Vector((math.cos(a) * 0.52, math.sin(a) * 0.52, 0.42))
-        out_d = Vector((math.cos(a), math.sin(a), 0))
-        leg = grow("claw_leg", [ankle, ankle + out_d * 0.18 + Vector((0, 0, -0.22)), ankle + out_d * 0.26 + Vector((0, 0, -0.36))], [(0, 1), (1, 2)],
-                   [0.1, 0.075, 0.07], sub=1)
-        paint(leg, lit(plain("#5d5470", "#2c2634", 0.0, 0.45)))
-        out["cauldron"].append(leg)
-        foot_c = ankle + out_d * 0.26 + Vector((0, 0, -0.36))
-        side = Vector((-out_d.y, out_d.x, 0))
-        for t in (-1, 0, 1):
-            toe_dir = (out_d + side * t * 0.6).normalized()
-            toe = grow("claw_toe", [foot_c, foot_c + toe_dir * 0.13 + Vector((0, 0, -0.03)), foot_c + toe_dir * 0.19 + Vector((0, 0, -0.06))], [(0, 1), (1, 2)],
-                       [0.04, 0.03, 0.006], sub=1)
-            paint(toe, lambda co, n: lin("#3a3346"))
-            out["cauldron"].append(toe)
+        a = 2 * math.pi * k / 4 + math.pi / 4
+        foot = egg("cauldron_foot", (math.cos(a) * 0.48, math.sin(a) * 0.48, 0.14), (0.19, 0.19, 0.16), seg=12, rings=8, sub=1)
+        paint(foot, lambda co, n: lin(BROWN_D).lerp(lin(BROWN), max(0.0, n.z) * 0.8 + 0.1))
+        extra.append(foot)
+    out["cauldron"] = [belly, inside] + extra
 
     # The fire pit: logs crossed in a bed of grey ash with embers in it (no ring of stones)
     pit = []
@@ -1277,76 +1227,80 @@ def build_props():
     out["bellows_top"] = [topb, top_handle]
 
 
-    # The top of the witches' tower, where brews are tried out: a round stone floor with a chalked
-    # circle, a ring of battlements, a trapdoor, a lectern for the book, a pennant on a pole.
-    # Its middle (where the witch stands) is the origin.
+    # The balcony off the side of the hut, where brews are tried out: a round deck of planks on stilts
+    # over the swamp, a chalked circle on it, a crooked twig railing round its front, and the hut's
+    # wall behind with the door out to it, a lantern on a post. The middle of the deck (where the
+    # witch stands) is the origin; the hut is on the +Y side (behind her as the camera sees it).
     tower = []
     rnd_t = random.Random(31)
-    floor_ = lathe("tower_floor", [(-0.6, 3.0, 3.0), (-0.1, 3.0, 3.0), (0.0, 2.95, 2.95)], seg=32, sub=0)
-
-    def flags(co, n):
-        r = math.hypot(co.x, co.y)
-        a = math.atan2(co.y, co.x)
-        if n.z > 0.5:
-            # Flagstones in rings, the chalk circle and its star
-            ring_k = math.floor(r / 0.6)
-            cell = math.floor(a * (3 + ring_k * 2) / math.pi)
-            shade_k = 0.06 * ((ring_k * 7 + cell * 3) % 4)
-            c = lin("#8a8298").lerp(lin("#5a5468"), shade_k * 2)
-            if abs(r - 1.05) < 0.035 or abs(r - 0.92) < 0.025:
-                c = lin("#f0ecf8")
-            for k in range(5):
-                p1 = Vector((math.cos(math.pi / 2 + k * 4 * math.pi / 5), math.sin(math.pi / 2 + k * 4 * math.pi / 5), 0)) * 0.92
-                p2 = Vector((math.cos(math.pi / 2 + (k + 1) * 4 * math.pi / 5), math.sin(math.pi / 2 + (k + 1) * 4 * math.pi / 5), 0)) * 0.92
-                d = p2 - p1
-                t = max(0.0, min(1.0, (Vector((co.x, co.y, 0)) - p1).dot(d) / d.length_squared))
-                if (Vector((co.x, co.y, 0)) - (p1 + d * t)).length < 0.025:
-                    c = lin("#f0ecf8")
-            return c
-        return lin("#6a6278") * (0.7 + 0.3 * max(0.0, n.z))
-    # A finer floor so the chalk shows: subdivide it flat
-    sub_floor = floor_.modifiers.new("sub", "SUBSURF")
-    sub_floor.subdivision_type = "SIMPLE"
-    sub_floor.levels = 3
-    floor_ = bake(floor_)
-    paint(floor_, flags)
-    tower.append(floor_)
-    wall = lathe("tower_wall", [(-30.0, 3.4, 3.4), (-3.0, 3.1, 3.1), (0.6, 3.1, 3.1), (0.6, 2.75, 2.75), (0.0, 2.75, 2.75)], seg=40, sub=0, cap_top=False, cap_bottom=False)
-
-    def stones(co, n):
-        a = math.atan2(co.y, co.x)
-        row = math.floor(co.z / 0.3)
-        col_k = math.floor(a * 12 / math.pi + (0.5 if row % 2 else 0.0))
-        k = ((row * 5 + col_k * 3) % 5) * 0.05
-        mortar = abs(co.z / 0.3 - round(co.z / 0.3)) < 0.06
-        c = lin("#7a7090").lerp(lin("#4a4460"), k * 2.5)
-        return c * (0.55 if mortar else 1.0)
-    paint(wall, stones)
-    tower.append(wall)
+    # The deck: planks side by side, cut to the round, a chalk circle and star on them
     for k in range(16):
-        a = 2 * math.pi * k / 16
-        merlon = box("merlon", (math.cos(a) * 2.93, math.sin(a) * 2.93, 0.95), (0.5, 0.36, 0.7), bevel=0.03, rot=Matrix.Rotation(a, 3, "Z"))
-        paint(merlon, lambda co, n, s=rnd_t.uniform(0, 0.15): lin("#857b9a").lerp(lin("#5a5470"), s + 0.2 * max(0.0, -n.z)))
-        tower.append(merlon)
-    trap = box("trapdoor", (1.7, 0.9, 0.02), (0.7, 0.7, 0.04), bevel=0.01, rot=Matrix.Rotation(0.4, 3, "Z"))
-    paint(trap, lambda co, n: lin("#8a5228") if (math.sin(co.x * 25) > -0.8) else lin("#5a3418"))
-    ringpull = ring("trap_ring", (1.62, 0.78, 0.05), 0.06, 0.012, seg=12, sides=5)
-    paint(ringpull, lambda co, n: lin("#3a3346"))
-    tower += [trap, ringpull]
-    lectern = grow("lectern", [(-1.6, 1.0, 0.0), (-1.6, 1.0, 0.9)], [(0, 1)], [0.07, 0.05], sub=0)
-    paint(lectern, lambda co, n: lin("#6b3e22"))
-    top_l = box("lectern_top", (-1.6, 1.0, 0.95), (0.5, 0.36, 0.05), bevel=0.01, rot=Matrix.Rotation(-0.4, 3, "X"))
-    paint(top_l, lambda co, n: lin("#8a5228"))
-    tower += [lectern, top_l]
-    pole = tube("pole", (2.2, -1.6, 0.0), (2.2, -1.6, 3.2), 0.04, 0.035, seg=8)
-    paint(pole, lambda co, n: lin("#5a3418"))
-    pennant = flat("pennant", [(0, 0), (0.9, -0.18), (0.0, -0.4)], 0.01, (2.2, -1.6, 3.15), Matrix.Rotation(math.pi / 2, 3, "X") @ Matrix.Rotation(0.4, 3, "Y"), sub=1)
-    paint(pennant, lambda co, n: lin("#8a55c8"))
-    tower += [pole, pennant]
-    for k, (x, y) in enumerate(((-2.2, -1.2), (2.3, 0.9), (-0.6, 2.4))):
-        candle = tube("candle", (x, y, 0.0), (x, y, 0.25 + k * 0.06), 0.06, 0.055, seg=8)
+        x = -2.4 + k * 0.32
+        half = math.sqrt(max(0.05, 2.45 ** 2 - (x + 0.16) ** 2)) * 0.94
+        plank = box("plank", (x + 0.16, 0, -0.05), (0.3, half * 2, 0.1), bevel=0.012)
+        pshade = ((k * 7) % 5) * 0.1
+        paint(plank, lambda co, n, s=pshade: lin("#9a6236").lerp(lin("#5a3418"), s + 0.3 * max(0.0, -n.z)))
+        tower.append(plank)
+    for big, thick in ((1.05, 0.03), (0.92, 0.022)):
+        chalk = ring("glow_chalk", (0, 0, 0.005), big, thick, seg=40, sides=4)
+        paint(chalk, lambda co, n: lin("#c8c0e8"))
+        tower.append(chalk)
+    for j in range(5):
+        a1 = math.pi / 2 + j * 4 * math.pi / 5
+        a2 = math.pi / 2 + (j + 1) * 4 * math.pi / 5
+        p1 = Vector((math.cos(a1), math.sin(a1), 0)) * 0.92
+        p2 = Vector((math.cos(a2), math.sin(a2), 0)) * 0.92
+        mid = (p1 + p2) / 2
+        d = p2 - p1
+        line = box("glow_chalk", (mid.x, mid.y, 0.006), (d.length, 0.035, 0.008), rot=Matrix.Rotation(math.atan2(d.y, d.x), 3, "Z"))
+        paint(line, lambda co, n: lin("#c8c0e8"))
+        tower.append(line)
+    # Stilts down into the dark, and the twig railing round the front
+    for k in range(7):
+        a = math.pi + math.pi * k / 6 + rnd_t.uniform(-0.1, 0.1)
+        p = Vector((math.cos(a) * 2.35, math.sin(a) * 2.15, 0))
+        stilt = tube("stilt", p + Vector((0, 0, -6.0)), p + Vector((0, 0, -0.1)), 0.11, 0.1, seg=8)
+        paint(stilt, lambda co, n: lin("#3a2414"))
+        post = tube("rail_post", p + Vector((0, 0, -0.05)), p + Vector((rnd_t.uniform(-0.05, 0.05), 0, 0.95)), 0.06, 0.05, seg=7)
+        paint(post, lambda co, n: lin("#6a4426").lerp(lin("#8a5a32"), max(0.0, n.z)))
+        tower += [stilt, post]
+    pts = []
+    for k in range(25):
+        a = math.pi * 0.92 + math.pi * 1.16 * k / 24
+        pts.append(Vector((math.cos(a) * 2.35, math.sin(a) * 2.15, 0.9 + 0.05 * math.sin(k * 1.7))))
+    for k in range(len(pts) - 1):
+        rail = tube("rail", pts[k], pts[k + 1], 0.045, 0.045, seg=6)
+        paint(rail, lambda co, n: lin("#7a4e2a"))
+        low = tube("rail_low", pts[k] - Vector((0, 0, 0.45)), pts[k + 1] - Vector((0, 0, 0.45)), 0.03, 0.03, seg=5)
+        paint(low, lambda co, n: lin("#5a3a1e"))
+        tower += [rail, low]
+    # The hut's wall behind: rough planks, a beam, a round-topped door standing open
+    wall = box("hut_wall", (0, 2.45, 2.0), (6.0, 0.3, 4.0))
+    paint(wall, lambda co, n: lin("#6a4428").lerp(lin("#4a2c18"), ((math.floor(co.x / 0.4) * 5) % 4) * 0.15) * (0.6 if abs(co.x / 0.4 - round(co.x / 0.4)) < 0.06 else 1.0))
+    door = box("glow_door", (0.0, 2.32, 1.05), (1.0, 0.04, 2.1))
+    paint(door, lambda co, n: lin("#8a4a1a").lerp(lin("#d8803a"), max(0.0, 1.0 - co.z / 2.1)))
+    jamb_l = box("door_jamb", (-0.58, 2.26, 1.05), (0.14, 0.12, 2.2))
+    jamb_r = box("door_jamb", (0.58, 2.26, 1.05), (0.14, 0.12, 2.2))
+    lintel = box("door_jamb", (0.0, 2.26, 2.18), (1.3, 0.14, 0.16))
+    leaf = box("door_leaf", (-0.95, 1.95, 1.05), (0.08, 0.95, 2.05), rot=Matrix.Rotation(0.0, 3, "Z"))
+    for ob in (jamb_l, jamb_r, lintel):
+        paint(ob, lambda co, n: lin("#8a5a32"))
+    paint(leaf, lambda co, n: lin("#4f8a3a").lerp(lin("#35602a"), 0.3 * (math.sin(co.z * 14) > 0.9)))
+    roof = box("hut_roof", (0, 2.0, 4.1), (6.6, 1.6, 0.25), rot=Matrix.Rotation(-0.35, 3, "X"))
+    paint(roof, lambda co, n: lin("#6a5a3a").lerp(lin("#8a7a4a"), max(0.0, n.z) * 0.5))
+    tower += [wall, door, jamb_l, jamb_r, lintel, leaf, roof]
+    # A lantern on a post, and a couple of candles on the deck
+    lpost = tube("lantern_post", (1.9, 0.9, 0.0), (1.9, 0.9, 2.1), 0.05, 0.045, seg=8)
+    paint(lpost, lambda co, n: lin("#3a2414"))
+    arm = tube("lantern_arm", (1.9, 0.9, 2.05), (1.55, 0.9, 2.05), 0.03, 0.03, seg=6)
+    paint(arm, lambda co, n: lin("#3a2414"))
+    lantern = box("glow_lantern", (1.55, 0.9, 1.8), (0.18, 0.18, 0.26), bevel=0.02)
+    paint(lantern, lambda co, n: lin("#ffc060"))
+    tower += [lpost, arm, lantern]
+    for k, (x, y) in enumerate(((-1.6, -0.6), (1.3, -1.2), (-0.9, 1.4))):
+        candle = tube("candle", (x, y, 0.0), (x, y, 0.22 + k * 0.06), 0.06, 0.055, seg=8)
         paint(candle, lambda co, n: lin("#f4ecd0"))
-        flame_ = egg("glow_flame", (x, y, 0.32 + k * 0.06), (0.04, 0.04, 0.08), seg=8, rings=5, sub=0)
+        flame_ = egg("glow_flame", (x, y, 0.3 + k * 0.06), (0.04, 0.04, 0.08), seg=8, rings=5, sub=0)
         paint(flame_, lambda co, n: lin("#ffd060"))
         tower += [candle, flame_]
     out["tower_top"] = tower

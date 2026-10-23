@@ -1,8 +1,10 @@
 shader_type spatial;
 // The brew's surface, after GameCommon's water: deeper and darker in the middle, a ragged rim of foam
 // lapping at the iron, pale lines wandering over it and swirling round with the stick, glints where
-// a light catches it, a slow heave (faster and rougher with the heat) and rings where things land or
-// bubbles burst. It shines by its own glow too. Colours and the rest come from a PotionLook.
+// a light catches it, a slow heave (faster and rougher with the heat). Real waves on top of that:
+// the heights and slopes of the wave pool (scripts/waves.gd) come in `waves`, so the stick leaves a
+// wake and things dropped in send rings across; crests catch the light and froth white.
+// Colours and the rest come from a PotionLook.
 render_mode cull_disabled, specular_disabled;
 
 uniform vec3 liquid : source_color = vec3(0.3, 0.65, 0.55);
@@ -19,14 +21,15 @@ uniform float boil = 0.0;
 uniform float murk = 0.0;
 uniform float flash = 0.0;
 uniform float clock = 0.0;
-// Rings: x, z, when it began, how strong
-uniform vec4 rings[12];
+uniform sampler2D waves : filter_linear, repeat_disable;
+// As scripts/waves.gd writes them
+uniform float height_range = 0.06;
+uniform float slope_range = 1.5;
 
-varying vec3 at;
+varying vec2 local;
 varying float heave;
 varying float spark;
 
-// (whole-number hashing, as the water has it: every square of the noise agrees about its corners)
 float hash(vec2 p) {
 	ivec2 c = ivec2(round(p));
 	uint h = uint(c.x) * 668265261u ^ (uint(c.y) * 374761393u);
@@ -67,40 +70,20 @@ vec2 swirled(vec2 p, float amount) {
 	return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
 }
 
-float ring_at(vec2 p, out float froth) {
-	float slow = mix(1.0, 0.45, thickness);
-	float best = 0.0;
-	froth = 0.0;
-	for (int i = 0; i < 12; i++) {
-		vec4 r = rings[i];
-		float age = (clock - r.z) * slow;
-		if (age < 0.0 || age > 1.6 || r.w <= 0.0) {
-			continue;
-		}
-		float k = age / 1.6;
-		float d = distance(p, r.xy);
-		float out_at = 0.03 * r.w + 0.42 * age * (1.0 - 0.3 * k);
-		float band = (0.018 + 0.012 * min(r.w, 1.5)) * (1.0 - 0.4 * k);
-		float fade = pow(1.0 - k, 1.3) * min(r.w * 2.0, 1.0);
-		float here = 1.0 - smoothstep(band * 0.5, band, abs(d - out_at));
-		best = max(best, here * fade);
-		froth = max(froth, (1.0 - smoothstep(0.0, out_at, d)) * (1.0 - smoothstep(0.0, 0.3, age)) * step(0.7, r.w));
-	}
-	return best;
+vec3 wave_at(vec2 p) {
+	vec3 w = texture(waves, p / (radius * 2.0) + 0.5).rgb * 2.0 - 1.0;
+	return vec3(w.r * height_range, w.g * slope_range, w.b * slope_range);
 }
-
-varying vec2 local;
 
 void vertex() {
 	local = VERTEX.xz;
-	at = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec2 p = VERTEX.xz;
-	float edge = 1.0 - smoothstep(0.7, 1.0, length(p) / radius);
+	float edge = 1.0 - smoothstep(0.75, 1.0, length(p) / radius);
 	float slow = mix(1.0, 0.4, thickness);
-	float h = sin(p.x * 5.0 + TIME * 1.3 * slow) * sin(p.y * 4.3 - TIME * 1.1 * slow) * 0.01;
-	h += boil * (vnoise(p * 7.0 + vec2(TIME * 1.7, -TIME * 1.3) * slow) - 0.5) * 0.06;
-	float froth;
-	h += ring_at(p, froth) * 0.025;
+	float h = sin(p.x * 5.0 + TIME * 1.3 * slow) * sin(p.y * 4.3 - TIME * 1.1 * slow) * 0.008;
+	h += boil * (vnoise(p * 7.0 + vec2(TIME * 1.7, -TIME * 1.3) * slow) - 0.5) * 0.05;
+	vec3 w = wave_at(p);
+	h += w.x;
 	VERTEX.y += h * edge;
 	heave = h;
 }
@@ -109,13 +92,18 @@ void fragment() {
 	vec2 p = local;
 	float r = length(p) / radius;
 	float t = clock;
-	vec2 q = swirled(p, spin * 0.8 + t * swirl);
+	vec3 w = wave_at(p);
+	vec2 slope = w.yz;
+	// The waves' slope bends the surface (and so the light on it)
+	vec3 n_local = normalize(vec3(-slope.x, 1.0, -slope.y));
+	NORMAL = normalize((VIEW_MATRIX * vec4(mat3(MODEL_MATRIX) * n_local, 0.0)).xyz);
+	vec2 q = swirled(p, spin * 0.8 + t * swirl) + slope * 0.04;
 	float n = vnoise(q * 6.0 + vec2(t * 0.21, 0.0)) * 0.65 + vnoise(q * 13.0 - vec2(0.0, t * 0.29)) * 0.35;
 	// Deeper, darker toward the middle
 	float depth = clamp(1.0 - r * r, 0.0, 1.0) * 0.85;
 	depth = 1.0 - (1.0 - depth) * (1.0 - depth);
 	vec3 colour = mix(liquid, deep, depth * 0.8);
-	colour *= 1.0 + heave * 6.0 + (n - 0.5) * 0.25;
+	colour *= 1.0 + heave * 5.0 + (n - 0.5) * 0.25;
 	// Pale lines wandering, swirled
 	float pixel = max(length(fwidth(p)), 0.0001);
 	float wide = 0.02 + pixel * 0.3;
@@ -127,14 +115,15 @@ void fragment() {
 	float white = 1.0 - cut(edge, reach);
 	float off = edge / max(0.07 * lap, 0.0001);
 	white = max(white, cut(off, 1.6) * (1.0 - cut(off, 2.0)) * cut(n, 0.52) * 0.8);
-	float froth;
-	float ring = ring_at(p, froth);
-	white = max(white, cut(ring * (0.55 + 0.9 * n), 0.4));
-	white = max(white, cut(froth * n, 0.35) * 0.9);
+	// Wave crests froth, the steep sides of a wake catch pale
+	float steep = length(slope);
+	white = max(white, cut(w.x * (0.6 + 0.8 * n), 0.012) * 0.9);
+	white = max(white, cut(steep * (0.5 + n), 0.55) * 0.6);
 	// The boil throws up foam in patches
 	white = max(white, cut(vnoise(q * 9.0 + t * 2.0) * boil, 0.55) * 0.7);
 	colour = mix(colour, mix(colour, foam, 0.45), line * (1.0 - white));
 	colour = mix(colour, foam, white * 0.9);
+	colour += foam * smoothstep(0.08, 0.6, steep) * 0.18;
 	colour = mix(colour, vec3(0.2, 0.15, 0.09) * (0.7 + 0.5 * n), murk);
 	ALBEDO = colour;
 	EMISSION = mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk) + vec3(1.0, 0.95, 0.8) * flash * 0.35;
@@ -142,13 +131,16 @@ void fragment() {
 	SPECULAR = 0.0;
 	vec2 g = q / 0.05;
 	spark = vnoise(g * vec2(0.55, 1.0) + vec2(t * 0.9, t * 0.35)) * vnoise(g * vec2(1.0, 0.6) * 1.37 - vec2(t * 0.6, t * 0.8) + 23.0);
+	spark = max(spark, smoothstep(0.15, 0.7, steep) * 0.6);
 	spark *= (1.0 - white) * (1.0 - murk);
 }
 
 void light() {
 	float facing = max(dot(NORMAL, LIGHT), 0.0);
-	DIFFUSE_LIGHT += (0.35 + 0.65 * facing) * ATTENUATION * LIGHT_COLOR / PI;
+	// (nothing from under the surface: the fire is below it, behind the iron)
+	float above = smoothstep(-0.15, 0.25, dot(NORMAL, LIGHT));
+	DIFFUSE_LIGHT += (0.3 + 0.7 * facing) * above * ATTENUATION * LIGHT_COLOR / PI;
 	float aim = pow(max(dot(NORMAL, normalize(LIGHT + VIEW)), 0.0), 16.0);
 	float flick = smoothstep(0.45, 0.55, spark * (0.25 + aim)) * smoothstep(0.05, 0.3, aim);
-	SPECULAR_LIGHT += flick * glints * ATTENUATION * LIGHT_COLOR / PI;
+	SPECULAR_LIGHT += (flick * glints + aim * 0.25) * above * ATTENUATION * LIGHT_COLOR / PI;
 }

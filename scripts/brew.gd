@@ -1,14 +1,14 @@
 class_name Brew
 extends Node3D
-## What's in the cauldron, alive: its surface (shaders/brew.gdshader, after GameCommon's water),
-## bubbles that swell and burst into rings, steam rising in trails, sparkles fizzing up, splashes
+## What's in the cauldron, alive: its surface (shaders/brew.gdshader, after GameCommon's water) on a
+## real wave pool (Waves) that the stick and everything dropped in disturb, bubbles that swell and
+## burst into rings, steam winding up in Wind Waker streamers, sparkles fizzing up, splashes
 ## when things go in (tiers of brew with ragged crests, rings and flung drops, after Salmon Run 2's),
 ## and the light it throws on the hut. How it all looks is a PotionLook; the brew eases from one
 ## look to the next. Stands at the middle of the surface.
 
 const RADIUS := 0.8
 const MAX_BUBBLES := 28
-const MAX_PUFFS := 56
 const MAX_SPARKS := 48
 
 var look := PotionLook.from_colour(Book.WATER)
@@ -22,13 +22,11 @@ var _target: PotionLook = look
 var _mat: ShaderMaterial
 var _light: OmniLight3D
 var _bubbles: MultiMeshInstance3D
-var _puffs: MultiMeshInstance3D
+var _streamers: Streamers
+var _waves: Waves
 var _sparks: MultiMeshInstance3D
 var _b: Array[Dictionary] = []
-var _p: Array[Dictionary] = []
 var _s: Array[Dictionary] = []
-var _rings: Array = []
-var _next_ring := 0
 var _clock := 0.0
 var _bubble_due := 0.0
 var _puff_due := 0.0
@@ -40,11 +38,13 @@ var _next_splash := 0
 
 
 func _ready() -> void:
-	for i in 12:
-		_rings.append(Vector4.ZERO)
+	_waves = Waves.new(RADIUS)
 	_mat = ShaderMaterial.new()
 	_mat.shader = preload("res://shaders/brew.gdshader")
 	_mat.set_shader_parameter("radius", RADIUS)
+	_mat.set_shader_parameter("waves", _waves.texture)
+	_mat.set_shader_parameter("height_range", Waves.HEIGHT_RANGE)
+	_mat.set_shader_parameter("slope_range", Waves.SLOPE_RANGE)
 	var surface := MeshInstance3D.new()
 	surface.name = "surface"
 	surface.mesh = _surface_mesh()
@@ -56,7 +56,9 @@ func _ready() -> void:
 	_light.omni_attenuation = 1.3
 	add_child(_light)
 	_bubbles = _multi("bubbles", _dome(), preload("res://shaders/bubble.gdshader"), MAX_BUBBLES)
-	_puffs = _multi("puffs", _card(), preload("res://shaders/puff.gdshader"), MAX_PUFFS)
+	_streamers = Streamers.new()
+	_streamers.name = "streamers"
+	add_child(_streamers)
 	_sparks = _multi("sparks", _card(), preload("res://shaders/spark.gdshader"), MAX_SPARKS)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
@@ -77,9 +79,12 @@ func set_look(l: PotionLook, at_once := false) -> void:
 
 ## Rings out from where something touched the surface (local x, z)
 func ripple(at: Vector2, power := 1.0) -> void:
-	_rings[_next_ring] = Vector4(at.x, at.y, _clock, power)
-	_next_ring = (_next_ring + 1) % _rings.size()
-	_mat.set_shader_parameter("rings", _rings)
+	_waves.push(at, 0.014 * power, 0.05 + 0.025 * minf(power, 2.0))
+
+
+## The stick drawn through the brew at a point (local x, z), going speed metres a second: a wake
+func wake(at: Vector2, speed: float) -> void:
+	_waves.push(at, clampf(0.0015 + speed * 0.0035, 0.0, 0.012), 0.045)
 
 
 ## A splash where something dropped in (local), as big as `strength`
@@ -87,8 +92,7 @@ func splash(at: Vector3, strength := 1.0) -> void:
 	var sp := _splashes[_next_splash]
 	_next_splash = (_next_splash + 1) % _splashes.size()
 	sp.start(Vector3(at.x, 0.0, at.z), strength, look)
-	ripple(Vector2(at.x, at.z), 1.0 * strength)
-	ripple(Vector2(at.x, at.z), 0.6 * strength)
+	ripple(Vector2(at.x, at.z), 1.6 * strength)
 	_flash = maxf(_flash, 0.25 * strength)
 
 
@@ -96,11 +100,11 @@ func flash(amount: float) -> void:
 	_flash = maxf(_flash, amount)
 
 
-## A burst of puffs (steam, smoke, spores) from a point on the surface (local), in a colour
+## A burst of smoke (steam, spores) from a point on the surface (local), in a colour: streamers
+## that wind up quick and curly
 func puffs(at: Vector3, count: int, col: Color, speed := 0.6, size := 1.0) -> void:
-	for i in count:
-		_add_puff(Vector3(at.x + randf_range(-0.1, 0.1), 0.05, at.z + randf_range(-0.1, 0.1)),
-				Vector3(randf_range(-0.3, 0.3), randf_range(0.6, 1.0), randf_range(-0.3, 0.3)) * speed, col, size * randf_range(0.8, 1.3), randf_range(1.0, 1.8))
+	for i in maxi(3, count * 2 / 3):
+		_streamers.add(Vector3(at.x + randf_range(-0.12, 0.12), 0.03, at.z + randf_range(-0.12, 0.12)), col, clampf(speed, 0.3, 1.0), size * 1.3)
 
 
 ## A burst of sparks flung up from a point (local)
@@ -134,7 +138,10 @@ func _process(dt: float) -> void:
 	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
 	_light.light_energy = look.light_energy * (0.9 + heat * 1.4) * flick * (1.0 - murk * 0.6) + _flash * 3.0
 	_tend_bubbles(dt)
-	_tend_puffs(dt)
+	_tend_steam(dt)
+	_waves.keep = lerpf(0.988, 0.965, look.thickness)
+	_waves.speed = lerpf(0.34, 0.2, look.thickness)
+	_waves.update(dt)
 	_tend_sparks(dt)
 
 
@@ -172,52 +179,23 @@ func _tend_bubbles(dt: float) -> void:
 		var s: float = b.size * (smoothstep(0.0, 0.7, k) + 0.25 * maxf(0.0, (k - 0.85) / 0.15))
 		var at: Vector2 = b.at
 		mm.set_instance_transform(shown, Transform3D(Basis().scaled(Vector3(s, s * 0.85, s)), Vector3(at.x, -s * 0.2, at.y)))
-		var col := look.bubble_colour
-		col.a = minf(1.0, k * 5.0)
-		mm.set_instance_color(shown, col)
+		mm.set_instance_color(shown, Color(1, 1, 1, minf(1.0, k * 5.0)))
 		shown += 1
 	mm.visible_instance_count = shown
 
 
-# --- steam rising in trails from wandering vents ---
+# --- steam winding up off it from wandering vents ---
 
-func _add_puff(at: Vector3, vel: Vector3, col: Color, size: float, life: float) -> void:
-	if _p.size() >= MAX_PUFFS:
-		_p.remove_at(0)
-	_p.append({"at": at, "vel": vel, "col": col, "size": size, "t": 0.0, "life": life, "seed": randf() * 10.0})
-
-
-func _tend_puffs(dt: float) -> void:
+func _tend_steam(dt: float) -> void:
 	for i in _vents.size():
 		_vents[i] += Vector2(sin(_clock * 0.7 + i * 2.0), cos(_clock * 0.5 + i * 3.0)) * dt * 0.15
 		_vents[i] = _vents[i].limit_length(0.5)
-	_puff_due += dt * look.steam * heat * 9.0
+	_puff_due += dt * look.steam * (0.3 + heat) * 4.0 * (1.0 - murk * 0.5)
 	while _puff_due >= 1.0:
 		_puff_due -= 1.0
 		var v := _vents[randi() % _vents.size()]
-		_add_puff(Vector3(v.x, 0.05, v.y), Vector3(randf_range(-0.05, 0.05), randf_range(0.45, 0.7), randf_range(-0.05, 0.05)),
-				look.steam_colour, randf_range(0.7, 1.1), randf_range(1.8, 2.6))
-	var mm := _puffs.multimesh
-	var shown := 0
-	for i in range(_p.size() - 1, -1, -1):
-		var p := _p[i]
-		p.t += dt
-		if p.t >= p.life:
-			_p.remove_at(i)
-			continue
-		# Curling as it rises, slowing, spreading
-		var curl := Vector3(sin(p.t * 2.0 + p.seed), 0.0, cos(p.t * 1.7 + p.seed)) * 0.12
-		p.at += (p.vel + curl) * dt
-		p.vel *= 1.0 - dt * 0.4
-	for p in _p:
-		var k: float = p.t / p.life
-		var s: float = p.size * (0.12 + 0.45 * sqrt(k))
-		mm.set_instance_transform(shown, Transform3D(Basis().scaled(Vector3.ONE * s), p.at))
-		var col: Color = p.col
-		col.a *= smoothstep(0.0, 0.15, k) * (1.0 - k) * (1.0 - k)
-		mm.set_instance_color(shown, col)
-		shown += 1
-	mm.visible_instance_count = shown
+		var sc := look.steam_colour
+		_streamers.add(Vector3(v.x + randf_range(-0.08, 0.08), 0.02, v.y + randf_range(-0.08, 0.08)), Color(sc, minf(1.0, sc.a * 1.5)))
 
 
 # --- sparkles fizzing up ---
@@ -267,6 +245,10 @@ func _apply(l: PotionLook) -> void:
 	_mat.set_shader_parameter("glints", l.glints)
 	_mat.set_shader_parameter("thickness", l.thickness)
 	_mat.set_shader_parameter("swirl", l.swirl)
+	var bm := _bubbles.material_override as ShaderMaterial
+	bm.set_shader_parameter("tint", l.bubble_colour)
+	bm.set_shader_parameter("opacity", l.bubble_opacity)
+	bm.set_shader_parameter("shine", l.bubble_shine)
 
 
 static func _close(a: PotionLook, b: PotionLook) -> bool:

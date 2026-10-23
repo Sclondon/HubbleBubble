@@ -27,6 +27,7 @@ var font: FontVariation
 var font_bold: FontVariation
 var book_font: Font
 var book_title_font: Font
+var note_font: FontVariation
 ## The page the book is open at, and its buttons
 var book_page := 0
 var buttons_book := {}
@@ -54,6 +55,9 @@ func _ready() -> void:
 	font_bold.base_font = base
 	book_font = load("res://fonts/LibreBaskerville-Italic.ttf")
 	book_title_font = load("res://fonts/LibreBaskerville.ttf")
+	note_font = FontVariation.new()
+	note_font.base_font = load("res://fonts/Caveat.ttf")
+	note_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600}
 	font_bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 650}
 	layout()
 
@@ -107,16 +111,13 @@ func layout() -> void:
 	_tickets.clear()
 	_top = Rect2(0, 0, w, 70)
 	buttons["pause"] = {"rect": Rect2(w - 74, 8, 62, 56)}
+	# The orders: small notes pegged to a string across the top
+	var tw := minf(168.0, (w - 70) / 3.0) if tall else 190.0
+	for i in 3:
+		_tickets.append(Rect2(22 + i * (tw + 12), 100, tw, tw * 0.6))
 	if tall:
-		var tw := (w - 40) / 3.0
-		for i in 3:
-			_tickets.append(Rect2(10 + i * (tw + 10), 80, tw, 150))
-		_strip = Rect2(10, h - 132, w - 20, 118)
 		_gauge = Rect2(w - 40, 290, 28, h * 0.26)
 	else:
-		for i in 3:
-			_tickets.append(Rect2(12, 84 + i * 160, 320, 150))
-		_strip = Rect2(12, h - 142, minf(w * 0.3, 760.0), 128)
 		_gauge = Rect2(w - 64, 220, 44, h * 0.42)
 	for i in _tickets.size():
 		buttons["ticket%d" % i] = {"rect": _tickets[i]}
@@ -130,8 +131,11 @@ func _input(event: InputEvent) -> void:
 		if e.pressed:
 			_press(e.index, e.position)
 		else:
-			if _touches.get(e.index, {}).get("id", "") == "hold":
+			var was: String = _touches.get(e.index, {}).get("id", "")
+			if was == "hold":
 				shop.release()
+			elif was == "stir":
+				shop.stir_release()
 			_touches.erase(e.index)
 			_held_pump.erase(e.index)
 		get_viewport().set_input_as_handled()
@@ -151,31 +155,15 @@ func _input(event: InputEvent) -> void:
 		elif t.get("id", "") == "stir":
 			if e.position.distance_to(t.get("from", e.position)) > 16.0:
 				t.still = -99.0
-			var cs := shop.cauldron_screen()
-			var c: Vector2 = cs[0]
-			var a0: float = (t.last - c).angle()
-			var a1: float = (e.position - c).angle()
-			if (e.position - c).length() > 12.0 and (t.last - c).length() > 12.0:
-				shop.stir(wrapf(a1 - a0, -PI, PI))
+			shop.stir_touch(e.position)
 			t.last = e.position
 		get_viewport().set_input_as_handled()
 
 
 func _press(index: int, at: Vector2) -> void:
+	if shop.fade > 0.05:
+		return
 	match shop.state:
-		"title":
-			if _hit("sound", at):
-				shop.set_sound(Sfx.me.muted)
-			elif _hit("go_shop", at):
-				Sfx.play("tap")
-				shop.start_game()
-			elif _hit("go_free", at):
-				Sfx.play("tap")
-				shop.start_free()
-			elif _hit("go_swamp", at):
-				Sfx.play("tap")
-				shop.visit_swamp()
-			return
 		"swamp":
 			if _hit("pause", at):
 				shop.toggle_pause()
@@ -207,14 +195,12 @@ func _press(index: int, at: Vector2) -> void:
 			shop.set_sound(Sfx.me.muted)
 		elif _hit("n64", at):
 			shop.set_n64(not shop.n64)
-		elif _hit("quit", at):
-			shop.quit_to_title()
 		return
 	if shop.book_open:
 		_book_tap(at)
 		return
 	for id: String in buttons:
-		if id in ["resume", "sound", "n64", "quit"] or not _hit(id, at):
+		if id in ["resume", "sound", "n64", "leave_swamp"] or not _hit(id, at):
 			continue
 		_touches[index] = {"id": id, "last": at}
 		if id.begins_with("ticket"):
@@ -227,11 +213,16 @@ func _press(index: int, at: Vector2) -> void:
 	if thing == "" or thing == "stir" or (shop.on_brew(at) and shop.pick_k > 0.6):
 		# The pot, or anywhere else in the middle: stirring (or, held still, tipping it out)
 		_touches[index] = {"id": "stir", "last": at, "from": at, "still": 0.0}
+		shop.stir_touch(at)
 		return
 	_touches[index] = {"id": thing, "last": at}
 	if thing.begins_with("jar"):
 		_touches[index].id = "hold"
 		shop.grab(int(thing.substr(3)), at)
+		return
+	if thing == "bottle":
+		_touches[index].id = "hold"
+		shop.grab_bottle(at)
 		return
 	shop.tap(thing)
 	if thing == "bellows":
@@ -249,39 +240,28 @@ func _draw() -> void:
 		_draw_loading()
 		return
 	match shop.state:
-		"title":
-			_draw_speech()
-			_draw_title()
-			return
 		"tower":
 			_draw_tower()
-			if shop.paused:
-				_draw_pause()
-			return
 		"swamp":
 			_draw_swamp()
+		_:
+			_draw_top()
+			_draw_tickets()
+			_draw_stir_ring()
+			_draw_counts()
+			_draw_gauge()
 			_draw_speech()
-			_draw_floaters()
-			if shop.paused:
-				_draw_pause()
-			return
-	_draw_top()
-	_draw_tickets()
-	_draw_stir_ring()
-	_draw_counts()
-	_draw_gauge()
-	_draw_strip()
-	_draw_speech()
-	_draw_floaters()
-	if shop.book_open:
-		_draw_book()
-	match shop.state:
-		"intro":
-			_draw_intro()
-		"done", "over":
-			_draw_summary()
+			if shop.book_open:
+				_draw_book()
+			match shop.state:
+				"intro":
+					_draw_intro()
+				"done", "over":
+					_draw_summary()
 	if shop.paused:
 		_draw_pause()
+	if shop.fade > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, size_now), Color(0.02, 0.01, 0.04, shop.fade))
 
 
 func _box(r: Rect2, fill: Color, border := INK, width := 5, radius := 18, shadow := true) -> void:
@@ -335,12 +315,11 @@ func _wrap(s: String, size: int, width: float) -> String:
 
 func _draw_top() -> void:
 	var w := size_now.x
-	draw_rect(Rect2(0, 0, w, 70), Color(0.08, 0.04, 0.12, 0.55))
-	if shop.mode == "free":
-		_text("BREWING FREELY", Vector2(18, 36), 34, Color("c8a0f0"), 9, HORIZONTAL_ALIGNMENT_LEFT)
-		_text("%d found" % shop.discoveries.size(), Vector2(w - 100, 36), 26, Color.WHITE, 7, HORIZONTAL_ALIGNMENT_RIGHT)
+	if shop.mode == "free" and shop.state == "play":
+		# The counter shut: nothing on the glass but the pause button
 		_button_pause(buttons.pause.rect)
 		return
+	draw_rect(Rect2(0, 0, w, 70), Color(0.08, 0.04, 0.12, 0.55))
 	_text("NIGHT %d" % shop.night, Vector2(18, 36), 34, GOLD, 9, HORIZONTAL_ALIGNMENT_LEFT)
 	# Coins this night against what the night needs
 	var q := Book.quota(shop.night)
@@ -374,42 +353,85 @@ func _button_pause(r: Rect2) -> void:
 
 
 func _draw_tickets() -> void:
-	if shop.mode == "free":
+	if shop.mode == "free" or shop.orders.is_empty():
 		return
-	for i in _tickets.size():
+	# The string, sagging between two nails
+	var x0 := 8.0
+	var x1 := _tickets[2].end.x + 14.0
+	var y0 := _tickets[0].position.y - 12.0
+	var pts := PackedVector2Array()
+	for k in 25:
+		var u := k / 24.0
+		pts.append(Vector2(lerpf(x0, x1, u), y0 + sin(u * PI) * 10.0))
+	draw_polyline(pts, Color("2a1a10"), 4.0, true)
+	draw_polyline(pts, Color("c8a878"), 2.0, true)
+	for p: Vector2 in [pts[0], pts[24]]:
+		draw_circle(p, 5, Color("3a3346"))
+	for i in mini(_tickets.size(), shop.orders.size()):
 		var r := _tickets[i]
-		if i >= shop.orders.size():
-			_box(r, Color(0.1, 0.05, 0.15, 0.25), Color(1, 1, 1, 0.12), 3, 16, false)
-			continue
 		var o: Dictionary = shop.orders[i]
 		var sel := i == shop.selected
-		var lift := -8.0 if sel else 0.0
-		if _bumps.has(i):
-			lift -= sin(_bumps[i] / 0.6 * PI) * 16.0
-		r.position.y += lift
 		var frac: float = clampf(o.patience / o.full, 0.0, 1.0)
-		var shake_x := sin(_t * 40.0) * 3.0 if frac < 0.25 else 0.0
-		r.position.x += shake_x
-		if sel:
-			_box(r.grow(6), GOLD, INK, 4, 22)
-		_box(r, PARCH, INK, 4, 16)
-		var face_r := 25.0
-		Icons.face(self, o.who, r.position + Vector2(36, 38), face_r)
-		Icons.bottle(self, r.position + Vector2(r.size.x - 38, 52), 62, o.colour)
+		# Hung from a peg at its top middle; it swings a little, more when it's new or she's cross
+		var peg := Vector2(r.get_center().x, y0 + sin((r.get_center().x - x0) / (x1 - x0) * PI) * 10.0)
+		var swing := sin(_t * 1.6 + i * 1.9) * 0.035
+		if _bumps.has(i):
+			swing += sin(_bumps[i] / 0.6 * PI * 3.0) * 0.12 * (1.0 - _bumps[i] / 0.6)
+		if frac < 0.25:
+			swing += sin(_t * 30.0) * 0.04
+		var grow := 1.08 if sel else 1.0
+		draw_set_transform(peg, swing, Vector2.ONE * grow)
+		var w := r.size.x
+		var h := r.size.y
+		var top := 8.0
+		# The note: rough-cut paper, a torn bottom edge
+		var paper := PackedVector2Array([Vector2(-w * 0.5, top), Vector2(w * 0.5, top)])
+		for k in 9:
+			var u := 1.0 - k / 8.0
+			paper.append(Vector2(lerpf(-w * 0.5, w * 0.5, u), top + h - (4.0 if k % 2 else 0.0) - 2.0 * sin(k * 2.7 + i)))
+		var shadow := PackedVector2Array()
+		for p in paper:
+			shadow.append(p + Vector2(3, 5))
+		draw_colored_polygon(shadow, Color(0, 0, 0, 0.3))
+		draw_colored_polygon(paper, Color("f4e8c8") if sel else Color("e8dab4"))
+		# She's getting impatient: the paper scorches up from the bottom
+		var burn := (1.0 - frac) * h * 0.9
+		if burn > 8.0:
+			var scorch := PackedVector2Array()
+			for k in 9:
+				var u := k / 8.0
+				scorch.append(Vector2(lerpf(-w * 0.5, w * 0.5, u), top + h - burn + 3.0 * sin(k * 2.1 + _t * 0.5)))
+			for k in 9:
+				var u := 1.0 - k / 8.0
+				scorch.append(Vector2(lerpf(-w * 0.5, w * 0.5, u), top + h - (4.0 if k % 2 else 0.0)))
+			draw_colored_polygon(scorch, Color(0.45, 0.24, 0.08, 0.35 + 0.35 * (1.0 - frac)))
+		# The peg
+		draw_rect(Rect2(-6, -6, 12, 22), Color("6b3e22") if not sel else Color("c8902a"))
+		draw_rect(Rect2(-6, -6, 12, 22), INK, false, 2.0)
+		# The potion's name, in a hurried hand
 		var name: String = Book.POTIONS[o.potion].name
-		var fs := 22 if tall else 24
-		var wrapped := _wrap(name, fs, r.size.x - 24)
-		_text(wrapped, Vector2(r.get_center().x, r.position.y + 98), fs, INK, 0, HORIZONTAL_ALIGNMENT_CENTER)
-		if not tall:
-			_text(o.who.name, Vector2(r.position.x + 70, r.position.y + 38), 22, Color("6a4a3a"), 0, HORIZONTAL_ALIGNMENT_LEFT)
-		# Patience: green to red, and the customer getting cross
-		var bar := Rect2(r.position + Vector2(14, r.size.y - 26), Vector2(r.size.x - 28, 14))
-		draw_rect(bar.grow(3), INK)
-		draw_rect(bar, Color("4a3040"))
-		var pc := GREEN.lerp(Color("ffd84a"), clampf((0.7 - frac) * 2.5, 0.0, 1.0)).lerp(RED, clampf((0.35 - frac) * 4.0, 0.0, 1.0))
-		draw_rect(Rect2(bar.position, Vector2(bar.size.x * frac, bar.size.y)), pc)
-		if shop.learned.has(o.potion) and shop.night >= 4:
-			Icons.book(self, r.position + Vector2(r.size.x - 22, 18), 26)
+		var fs := 30 if tall else 32
+		var lines := _wrap_with(note_font, name, fs, w - 14).split("\n")
+		var ly := top + h * 0.5 - (lines.size() - 1) * fs * 0.42
+		for ln in lines:
+			var lw := note_font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			draw_string(note_font, Vector2(-lw * 0.5, ly + fs * 0.32), ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("2a1a3a"))
+			ly += fs * 0.84
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _wrap_with(f: Font, s: String, size: int, width: float) -> String:
+	var out := []
+	var line := ""
+	for word in s.split(" "):
+		var trial := word if line == "" else line + " " + word
+		if f.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width and line != "":
+			out.append(line)
+			line = word
+		else:
+			line = trial
+	out.append(line)
+	return "\n".join(out)
 
 
 func _draw_stir_ring() -> void:
@@ -455,44 +477,6 @@ func _draw_gauge() -> void:
 		_text(Book.HEAT_NAMES[band], Vector2(g.get_center().x - 14, g.position.y - 24), 20, Book.HEAT_COLOURS[band], 7)
 
 
-## The page at the foot of the screen: what she asked for (just the name: the book has the rest),
-## and what has gone into the pot so far, in order
-func _draw_strip() -> void:
-	var o := shop.selected_order()
-	var r := _strip
-	_box(r, PARCH, INK, 5, 20)
-	var title := ""
-	if shop.mode == "free":
-		title = "Brew what you like; bottle it for the tower"
-	elif not o.is_empty():
-		title = "\"%s\"" % Book.POTIONS[o.potion].name
-	elif shop.state == "play":
-		title = "Waiting for customers..."
-	_text(title, Vector2(r.position.x + 18, r.position.y + 4), 24, GOLD, 7, HORIZONTAL_ALIGNMENT_LEFT)
-	var steps: Array = shop.brew
-	var cy := r.position.y + r.size.y * 0.58
-	if steps.is_empty():
-		_text("The pot holds only water.", Vector2(r.get_center().x, cy), 24, Color("8a6a4a"), 0, HORIZONTAL_ALIGNMENT_CENTER, font)
-		return
-	var slot := minf(84.0, (r.size.x - 30) / maxf(steps.size(), 1))
-	var x0 := r.position.x + 18
-	for i in steps.size():
-		var c := Vector2(x0 + slot * (i + 0.5), cy)
-		var st: Dictionary = steps[i]
-		var pop := 1.0
-		if _ticks.has(i):
-			pop = 1.0 + sin(_ticks[i] / 0.6 * PI) * 0.35
-		draw_circle(c, slot * 0.44, PARCH_D)
-		Icons.step(self, st, c, slot * 0.74 * pop)
-		if st.kind == Book.STIR:
-			_text("x%d" % st.turns, c + Vector2(slot * 0.3, slot * 0.3), int(slot * 0.3), Color.WHITE, 6)
-		elif st.kind == Book.HEAT:
-			_text(Book.HEAT_NAMES[st.level], c + Vector2(0, slot * 0.42), int(slot * 0.2), Book.HEAT_COLOURS[st.level], 5)
-	if shop.spoil_t > 0.0:
-		_box(r.grow(-6), Color(0.3, 0.22, 0.12, 0.85), INK, 0, 16, false)
-		_text("Spoilt! Tipping it out...", r.get_center(), 30, Color("ffcf9a"), 8)
-
-
 func _check(c: Vector2, s: float) -> void:
 	var pts := PackedVector2Array([c + Vector2(-0.8, 0) * s, c + Vector2(-0.2, 0.6) * s, c + Vector2(0.9, -0.6) * s])
 	Icons.line(self, pts, s * 0.55)
@@ -518,25 +502,17 @@ func _draw_speech() -> void:
 	if sp.who == "witch":
 		anchor = shop.screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.5, 0.6))
 	else:
-		anchor = shop.screen_of(Hut.WINDOW_HEAD + Vector3(-0.75, 0.75, 0))
-	var top_limit := 270.0 if tall else 84.0
+		anchor = shop.screen_of(Hut.WINDOW_HEAD + (Vector3(-0.75, 0.75, 0) if tall else Vector3(-2.1, 0.3, 0)))
+	var top_limit := (_tickets[0].end.y + 30.0) if not shop.orders.is_empty() else 84.0
 	var low_limit := size_now.y * 0.62
 	var box := Rect2(anchor + Vector2(-bw * 0.5, -bh - 40), Vector2(bw, bh))
-	if shop.state == "title":
-		box.position.y = anchor.y - bh - 30
-		top_limit = size_now.y * 0.36
-	elif shop.state == "swamp":
+	if shop.state == "swamp":
 		box.position.y = 140.0
 		top_limit = 0.0
 		low_limit = size_now.y
 	elif sp.who == "witch" and not tall and shop.state == "play":
 		# Your own words, in the corner by the bellows, clear of the brew
 		box.position = Vector2(size_now.x - bw - 90, size_now.y - bh - 40)
-		top_limit = 0.0
-		low_limit = size_now.y
-	elif sp.who == "witch" and tall:
-		# Your own words, down by the recipe, clear of the brew
-		box.position.y = _strip.position.y - bh - 18
 		top_limit = 0.0
 		low_limit = size_now.y
 	box.position.x = clampf(box.position.x, 12, size_now.x - bw - 12)
@@ -575,68 +551,10 @@ func _draw_floaters() -> void:
 		draw_string(font_bold, base, f.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
 
-## A pointing hand at the book while a customer wants something not made yet
-func _draw_hint() -> void:
-	if shop.state != "play" or shop.paused or shop.book_open or shop.mode != "shop":
-		return
-	var o := shop.selected_order()
-	if o.is_empty() or shop.learned.has(o.potion) or o.get("looked", false):
-		return
-	var bob := absf(sin(_t * 6.0)) * 14.0
-	_hand(shop.spot_screen("book") + Vector2(10, 18 + bob))
-
-
-func _hand(tip: Vector2) -> void:
-	var s := 1.0
-	var palm := tip + Vector2(14, 46) * s
-	Icons.blob(self, Icons.oval(palm, Vector2(26, 24) * s), Color("fff0d8"), 5)
-	Icons.blob(self, Icons.oval(tip + Vector2(0, 16) * s, Vector2(10, 24) * s), Color("fff0d8"), 5)
-	Icons.blob(self, Icons.oval(palm, Vector2(22, 20) * s), Color("fff0d8"))
-
-
 func _card(r: Rect2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, size_now), Color(0.05, 0.02, 0.08, 0.55))
 	_box(r.grow(8), GOLD, INK, 5, 30)
 	_box(r, PARCH, INK, 5, 24)
-
-
-func _draw_title() -> void:
-	var w := size_now.x
-	var h := size_now.y
-	var cy := h * 0.17 if tall else h * 0.2
-	# Bouncy letters, one at a time
-	var title := "HUBBLE BUBBLE"
-	var fs := 92 if tall else 120
-	var total := font_bold.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	if total > w - 40:
-		fs = int(fs * (w - 40) / total)
-		total = font_bold.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	var x := w * 0.5 - total * 0.5
-	var colours := [Color("8fe36b"), Color("f2c840"), Color("c890ff"), Color("ff8a5a")]
-	for i in title.length():
-		var ch := title[i]
-		var cw := font_bold.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var y := cy + sin(_t * 4.0 + i * 0.6) * 10.0
-		draw_string_outline(font_bold, Vector2(x, y + 8), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 22, INK)
-		draw_string(font_bold, Vector2(x, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, colours[i % colours.size()])
-		x += cw
-	_text("Granny Grumblewart's Potion Shop", Vector2(w * 0.5, cy + fs * 0.55), 32 if tall else 38, PARCH, 9)
-	var pulse := 1.0 + sin(_t * 5.0) * 0.05
-	var bw := minf(w - 80, 520.0)
-	var by := h - (430 if tall else 400)
-	for i in 3:
-		var id: String = ["go_shop", "go_free", "go_swamp"][i]
-		var br := Rect2(w * 0.5 - bw * 0.5, by + i * 104, bw, 88)
-		buttons[id] = {"rect": br}
-		_box(br.grow(4 if i == 0 else 0), [GREEN, Color("b890f0"), Color("6aa8a0")][i], INK, 5, 24)
-		_text(["Open the Shop", "Brew Freely in the Tower", "Gather in the Swamp"][i], br.get_center() + Vector2(0, -8), int((36 if i == 0 else 30) * (pulse if i == 0 else 1.0)), Color.WHITE, 9)
-		_text(["Customers, orders, a coin to earn each night", "Make anything, and watch a witch drink it", "Fill your shelf for the nights to come"][i], br.get_center() + Vector2(0, 28), 18, Color(1, 1, 1, 0.85), 5)
-	if shop.best > 0:
-		_text("Best: %d coins" % shop.best, Vector2(w * 0.5, by - 40), 28, Color.WHITE, 8)
-	var r := Rect2(w - 84, 14, 70, 60)
-	buttons["sound"] = {"rect": r}
-	_box(r, WOOD_L, INK, 4, 14)
-	_speaker(r.get_center(), not Sfx.me.muted)
 
 
 func _speaker(c: Vector2, on: bool) -> void:
@@ -682,18 +600,20 @@ func _draw_summary() -> void:
 
 func _draw_pause() -> void:
 	var w := size_now.x
-	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 560)
+	var r := Rect2(w * 0.5 - minf(260, w * 0.42), size_now.y * 0.26, minf(520, w * 0.84), 500)
 	_card(r)
 	_text("PAUSED", Vector2(r.get_center().x, r.position.y + 56), 56, GOLD, 12)
 	var bw := r.size.x - 80
-	var ids := ["resume", "sound", "n64", "quit"]
-	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on"), "N64 filter: %s" % ("on" if shop.n64 else "off"), "Back to the title"]
-	for i in 4:
+	var ids := ["resume", "sound", "n64"]
+	var labels := ["Keep brewing", "Sound: %s" % ("off" if Sfx.me.muted else "on"), "N64 filter: %s" % ("on" if shop.n64 else "off")]
+	for i in 3:
 		var br := Rect2(r.position.x + 40, r.position.y + 110 + i * 92, bw, 74)
 		buttons[ids[i]] = {"rect": br}
 		_box(br, [GREEN, Color("8ab8e8"), Color("c8a0f0"), Color("e8a090")][i], INK, 4, 20)
 		_text(labels[i], br.get_center(), 32, Color.WHITE, 8)
-	_text("Keys: 1-8 ingredients, Space heat, A/D or arrows stir,\nZ zap, Enter bottle, Tab next order, R book", Vector2(r.get_center().x, r.end.y - 40), 18, Color("6a4a3a"), 0)
+	if shop.best > 0:
+		_text("Best: %d coins" % shop.best, Vector2(r.get_center().x, r.end.y - 92), 26, INK, 0)
+	_text("Keys: 1-8 ingredients, Space heat, A/D stir, Z zap, Enter bottle,\nO open/shut the shop, G the swamp, T the balcony, R book", Vector2(r.get_center().x, r.end.y - 40), 18, Color("6a4a3a"), 0)
 
 
 func _draw_book() -> void:
@@ -896,6 +816,8 @@ func _draw_tower() -> void:
 	var h := size_now.y
 	var res: Dictionary = shop.tower_result
 	_button_pause(buttons.pause.rect)
+	if res.is_empty():
+		return
 	_text(shop.tower.tester_name() + " tries it...", Vector2(w * 0.5, 120), 30, PARCH, 9)
 	if shop.tower_t < 1.4:
 		return
@@ -911,7 +833,7 @@ func _draw_tower() -> void:
 	if shop.tower_new:
 		_text("New! Written in your book.", Vector2(r.get_center().x, r.position.y + 226), 24, Color("3a8a2a"), 0)
 	var pulse := 1.0 + sin(_t * 5.0) * 0.04
-	_text("Tap to brew another", Vector2(r.get_center().x, r.end.y - 22), int(24 * pulse), Color("8a6a4a"), 0)
+	_text("Tap to go back in", Vector2(r.get_center().x, r.end.y - 22), int(24 * pulse), Color("8a6a4a"), 0)
 
 
 func _book_tap(at: Vector2) -> void:
@@ -956,13 +878,9 @@ func _draw_swamp() -> void:
 	var h := size_now.y
 	draw_rect(Rect2(0, 0, w, 70), Color(0.08, 0.04, 0.12, 0.55))
 	_text("THE SWAMP", Vector2(18, 36), 34, Color("a8e870"), 9, HORIZONTAL_ALIGNMENT_LEFT)
-	if shop.swamp_from != "visit":
-		_text("%d" % int(ceil(maxf(shop.swamp_t, 0.0))), Vector2(w * 0.5, 36), 34, Color.WHITE, 9)
 	_button_pause(buttons.pause.rect)
-	var visit := shop.swamp_from == "visit"
-	_text("Tap things to gather them" if visit else "Tap things to gather them for night %d" % (shop.night + 1), Vector2(w * 0.5, 104), 26, PARCH, 8)
 	# The basket: what's on hand
-	var count := 8 if visit else Book.ingredients_on(shop.night + 1)
+	var count := 8
 	var bw := minf(w - 20, 760.0)
 	var r := Rect2(w * 0.5 - bw * 0.5, h - 240, bw, 112)
 	_box(r, PARCH, INK, 5, 20)
@@ -977,7 +895,7 @@ func _draw_swamp() -> void:
 	var done := Rect2(w * 0.5 - 170, h - 112, 340, 82)
 	buttons["leave_swamp"] = {"rect": done}
 	_box(done, GREEN, INK, 5, 22)
-	_text("Back home" if shop.swamp_from == "visit" else "Open the shop!", done.get_center(), 32, Color.WHITE, 8)
+	_text("Back inside", done.get_center(), 32, Color.WHITE, 8)
 
 
 ## The first moments, while it warms up: the title over a bubbling pot, like the page's own loading screen

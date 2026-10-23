@@ -1,8 +1,8 @@
 class_name Tower
 extends Node3D
-## The top of the witches' tower, where a brew made freely is tried out: a witch stands in the
-## chalk circle under the moon, catches the bottle, drinks it, and whatever it does happens to her.
-## It sits far off from the hut in the same world; the camera goes up to it.
+## The balcony off the hut, out over the swamp, where a brew made freely is tried out: a witch stands
+## in the chalk circle under the moon, catches the bottle, drinks it, and whatever it does happens to
+## her. (Still called the tower, as it was.) It sits off from the hut in the same world.
 
 const WITCHES := ["witch_gristle", "witch_hattie", "witch_bella", "witch_bogwort", "witch_polly", "witch_esme"]
 
@@ -38,7 +38,13 @@ func tester_name() -> String:
 	return "A witch"
 
 
-## The bottle flies up from below; she catches it and drinks
+## Nothing to try yet: whoever's out there waits for something
+func wait() -> void:
+	if not is_instance_valid(tester):
+		_new_tester()
+
+
+## The bottle comes out through the door behind; she catches it and drinks
 func try_out(result: Dictionary) -> void:
 	_new_tester()
 	var b := Node3D.new()
@@ -47,7 +53,7 @@ func try_out(result: Dictionary) -> void:
 	liquid.set_shader_parameter("tint", Shape.lin3(result.colour))
 	b.add_child(Models.make("potion_liquid", liquid))
 	add_child(b)
-	var from := Vector3(0.8, -1.5, 2.5)
+	var from := Vector3(0.0, 1.2, -2.2)
 	var to := Vector3(0.3, 1.6, 0.4)
 	var tw := create_tween()
 	tw.tween_interval(0.6)

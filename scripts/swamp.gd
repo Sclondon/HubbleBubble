@@ -28,6 +28,24 @@ var _t := 0.0
 
 func _ready() -> void:
 	add_child(Models.make("swamp"))
+	# Black swamp water all round, out to the dark, with reeds standing in it: the patch out the
+	# back window is an island in the swamp, not a thing on its own
+	var water := Shape.new().disc(Vector3(0, -0.06, 0), Vector2(40, 40), Color("12162a"), 32, Basis(), Color("0c0e1c"))
+	add_child(water.piece("water"))
+	var reeds := Shape.new()
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 3
+	for i in 90:
+		var a := rr.randf() * TAU
+		var d := rr.randf_range(3.4, 9.0)
+		var p := Vector3(cos(a) * d, -0.06, sin(a) * d)
+		var h := rr.randf_range(0.4, 1.2)
+		reeds.tube(p, p + Vector3(rr.randf_range(-0.15, 0.15), h, 0), 0.03, 0.01, Color("2a3a2a"), Color("1a241e"), 4)
+		if i % 5 == 0:
+			reeds.ball(p + Vector3(0, h, 0), Vector3(0.04, 0.1, 0.04), Color("4a2a18"), null, 5, 4)
+		if i % 9 == 0:
+			reeds.disc(p + Vector3(0.3, 0.01, 0.2), Vector2(0.28, 0.22), Color("2f5a2a"), 10)
+	add_child(reeds.piece("reeds"))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	Tower.night_sky(self, rng, -14.0)
