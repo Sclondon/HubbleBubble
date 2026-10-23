@@ -247,8 +247,10 @@ func _frame() -> void:
 		# Phone: framed by width; you lean over the pot and look down into it, the counter beyond
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
 		camera.fov = 44.0
-		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.5, 0.6)
-		camera.position = Vector3(0, 2.7 + spare * 0.2, 2.55 + spare * 0.5)
+		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.9, 0.6)
+		# (a shorter screen shows less top to bottom: back off and up, to keep it all in)
+		var back := maxf(0.0, -spare)
+		camera.position = Vector3(0, 2.7 + maxf(spare, 0.0) * 0.2 + back * 0.7, 2.55 + maxf(spare, 0.0) * 0.5 + back * 1.6)
 		camera.look_at(Vector3(0, 1.45, -1.0))
 	else:
 		# Wide: framed by height, close enough that the walls either side don't take over
@@ -624,6 +626,9 @@ func _process(dt: float) -> void:
 	smoke_camera.global_transform = camera.global_transform
 	smoke_camera.fov = camera.fov
 	smoke_camera.keep_aspect = camera.keep_aspect
+	# The floating book keeps to the lower left of the view, whatever its shape
+	if state == "play" or state == "intro":
+		hut._book_home = camera.project_position(Vector2(view.size) * Vector2(0.2, 0.8), 2.3)
 	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
 		show_book_pages()
 	_update_speech(dt)
@@ -899,7 +904,20 @@ func release() -> void:
 
 ## Where a finger on the screen is, out over the pot at the height things are carried
 func _over(at: Vector2) -> Vector3:
-	return _on_plane(at, Hut.CAULDRON_RIM + 0.12)
+	var p := _on_plane(at, Hut.CAULDRON_RIM + 0.12)
+	# Up over the counter the level plane runs away toward the horizon: there, it's held up on an
+	# upright plane in front of the counter instead, so it follows the finger without jumping
+	if p.z < -1.5 or p.distance_to(camera.global_position) > 6.0:
+		var sp := at * (Vector2(view.size) / get_viewport().get_visible_rect().size)
+		var from := camera.project_ray_origin(sp)
+		var dir := camera.project_ray_normal(sp)
+		if dir.z < -0.001:
+			var t := (-1.5 - from.z) / dir.z
+			p = from + dir * t
+	p.y = clampf(p.y, Hut.CAULDRON_RIM + 0.05, 3.4)
+	p.x = clampf(p.x, -1.9, 1.9)
+	p.z = clampf(p.z, -1.5, 1.2)
+	return p
 
 
 ## Where a point on the screen is on the level plane at `height`

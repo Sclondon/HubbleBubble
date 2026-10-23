@@ -71,6 +71,7 @@ var _pot: Node3D
 var _needle: Node3D
 var _book: Node3D
 var _book_home := Vector3.ZERO
+var _book_scale := 1.0
 var _needle_angle := 0.0
 var _current_target := 0.0
 
@@ -120,7 +121,10 @@ func _process(dt: float) -> void:
 	_current_target *= exp(-dt * 3.0)
 	# The book floats, turning a little
 	_book.position = _book_home + Vector3(0, sin(t * 1.3) * 0.04, 0)
-	_book.rotation.z = sin(t * 0.9) * 0.04
+	# Turned to whoever's looking, so its pages can be read from anywhere
+	var cam := get_viewport().get_camera_3d()
+	var to := ((cam.global_position if cam != null else Vector3(0, 3.0, 3.2)) - _book.position).normalized()
+	_book.basis = Basis.looking_at(-to, Vector3.UP).scaled(Vector3.ONE * _book_scale) * Basis(Vector3.BACK, sin(t * 0.9) * 0.04)
 
 
 ## The brew becomes what's in it: its look for the effect it's making, murky when spoilt
@@ -546,16 +550,16 @@ func _shelf() -> void:
 	props["bottle"] = rack
 	spots["bottle"] = {"at": hang + Vector3(0, 0.25, 0), "r": 0.45}
 	_book = _floating_book()
-	# Floating by the pot on the left, in front of the shelf
-	_book_home = Vector3(-0.78, 1.95, -0.6)
-	_book.scale = Vector3.ONE * 0.95
+	# Floating low by the pot on the front left, clear of the shelves
+	_book_home = Vector3(-0.72, 1.0, 1.3)
+	_book_scale = 0.48
 	_book.position = _book_home
 	add_child(_book)
 	props["book"] = _book
 	spots["book"] = {"at": _book_home, "r": 0.34}
 	var bellows := Node3D.new()
 	bellows.name = "bellows"
-	bellows.position = Vector3(0.66, 0.36, 0.98)
+	bellows.position = Vector3(0.95, 0.75, 0.95)
 	var d := (Vector3(0, 0, 0) - bellows.position).normalized()
 	bellows.rotation = Vector3(0, atan2(d.z, -d.x), 0.2)
 	bellows.scale = Vector3.ONE * 1.3
@@ -579,7 +583,7 @@ func _floating_book() -> Node3D:
 	var holder := Node3D.new()
 	b.add_child(holder)
 	# Turned to face you, leaning back
-	holder.rotation = Vector3(-0.35, 0.3, 0)
+	holder.rotation = Vector3.ZERO
 	var cover := Shape.new()
 	for sgn: float in [-1.0, 1.0]:
 		cover.box(Vector3(sgn * 0.3, 0, -0.02), Vector3(0.6, 0.78, 0.03), Color("6a2a3a"), Color("4a1a2a"), Basis(Vector3.UP, sgn * 0.18))

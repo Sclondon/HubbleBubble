@@ -27,4 +27,4 @@ static func dress(node: Node, material: Material) -> void:
 			mi.material_override = _glow
 		else:
 			mi.material_override = material
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON

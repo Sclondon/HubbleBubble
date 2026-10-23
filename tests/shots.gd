@@ -5,6 +5,8 @@ extends SceneTree
 
 var out := "user://shots"
 var wide := false
+## A shorter phone (an iframe in a browser): 720 x 1170
+var short := false
 var only := ""
 var main: Shop
 
@@ -15,10 +17,12 @@ func _initialize() -> void:
 			out = a.substr(8)
 		elif a == "--wide":
 			wide = true
+		elif a == "--short":
+			short = true
 		elif a.begins_with("--only="):
 			only = a.substr(7)
 	DirAccess.make_dir_recursive_absolute(out)
-	var size := Vector2i(1600, 900) if wide else Vector2i(720, 1560)
+	var size := Vector2i(1600, 900) if wide else (Vector2i(720, 1170) if short else Vector2i(720, 1560))
 	DisplayServer.window_set_size(size)
 	root.size = size
 	main = load("res://main.tscn").instantiate()

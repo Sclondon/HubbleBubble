@@ -33,6 +33,7 @@ var _bubbles: MultiMeshInstance3D
 var _streamers: Streamers
 var _tendrils: Streamers
 var _clouds: Clouds
+var _wake: Wake
 var _shapes: MultiMeshInstance3D
 var _shape_list: Array[Dictionary] = []
 var _shape_due := 2.0
@@ -41,6 +42,7 @@ var _haze: MultiMeshInstance3D
 var _haze_cards: Array[Dictionary] = []
 var _tendril_due := 0.0
 var _glow_light: OmniLight3D
+var _spot: SpotLight3D
 var _waves: Waves
 var _sparks: MultiMeshInstance3D
 var _b: Array[Dictionary] = []
@@ -84,6 +86,9 @@ func _ready() -> void:
 	_tendrils.name = "tendrils"
 	_tendrils.glowing = true
 	add_child(_tendrils)
+	_wake = Wake.new(_waves)
+	_wake.name = "wake"
+	add_child(_wake)
 	_clouds = Clouds.new()
 	_clouds.name = "clouds"
 	add_child(_clouds)
@@ -101,6 +106,18 @@ func _ready() -> void:
 	_glow_light.omni_attenuation = 0.8
 	_glow_light.light_cull_mask = 0xFFFFF & ~2
 	add_child(_glow_light)
+	_spot = SpotLight3D.new()
+	_spot.name = "spot"
+	_spot.position = Vector3(0, -0.02, 0.0)
+	_spot.rotation = Vector3(PI * 0.5 + 0.12, 0, 0)
+	_spot.spot_angle = 72.0
+	_spot.spot_range = 9.0
+	_spot.spot_attenuation = 0.6
+	_spot.shadow_enabled = true
+	_spot.shadow_bias = 0.04
+	# (not on the smoke layer: a shadowed light there stops the smoke camera drawing at all)
+	_spot.light_cull_mask = 0xFFFFF & ~2 & ~4
+	add_child(_spot)
 	_sparks = _multi("sparks", _card(), preload("res://shaders/spark.gdshader"), MAX_SPARKS)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
@@ -130,6 +147,7 @@ func ripple(at: Vector2, power := 1.0) -> void:
 
 ## The stick drawn through the brew at a point (local x, z), going speed metres a second: a wake
 func wake(at: Vector2, speed: float) -> void:
+	_wake.stick_at(at)
 	_waves.push(at, clampf(0.006 + speed * 0.012, 0.0, 0.04), 0.055)
 	_waves.foam(at, clampf(0.05 + speed * 0.12, 0.0, 0.35), 0.045)
 
@@ -197,7 +215,9 @@ func _process(dt: float) -> void:
 	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
 	_light.light_energy = (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
 	_glow_light.light_color = _light.light_color
-	_glow_light.light_energy = look.light_energy * (0.5 + heat * 0.8) * (0.3 + look.glow) * flick * (1.0 - murk * 0.7) + _flash * 1.5
+	_spot.light_color = _light.light_color
+	_spot.light_energy = look.light_energy * (1.6 + heat * 1.6) * (0.4 + look.glow) * flick * (1.0 - murk * 0.6) + _flash * 4.0
+	_glow_light.light_energy = (look.light_energy * (0.5 + heat * 0.8) * (0.3 + look.glow) * flick * (1.0 - murk * 0.7) + _flash * 1.5) * 0.35
 	_tend_haze(dt)
 	# Now and then its smoke shape pops out of it (more often when it's hot)
 	if look.smoke_shape > 0 and murk < 0.5:
@@ -370,7 +390,9 @@ func _tend_floaters(dt: float) -> void:
 		var y: float = _waves.height_at(f.at) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5) - f.sink
 		var jig := 0.12 + 0.1 * heat + shake * 0.45
 		var hop := shake * absf(sin(t * 19.0 + f.phase)) * 0.07
-		node.position = Vector3(f.at.x, y + 0.01 + sin(t * 2.6 + f.phase) * 0.01 + hop, f.at.y)
+		node.position = Vector3(f.at.x, y - 0.045 + sin(t * 2.6 + f.phase) * 0.012 + hop, f.at.y)
+		if randf() < dt * 4.0:
+			_waves.foam(f.at, 0.25, 0.06)
 		node.rotation = Vector3(sin(t * 7.0 + f.phase) * jig, node.rotation.y + dt * (f.spin + current * 0.6), sin(t * 6.1 + f.phase * 2.0) * jig)
 		var sq := 1.0 + shake * 0.18 * sin(t * 24.0 + f.phase)
 		node.scale = Vector3(1.0 / sqrt(sq), sq, 1.0 / sqrt(sq)) * 1.3

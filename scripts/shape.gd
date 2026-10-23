@@ -220,7 +220,7 @@ func piece(name := "piece", material: Material = null) -> MeshInstance3D:
 	mi.name = name
 	mi.mesh = mesh()
 	mi.material_override = material if material != null else Shape.plain()
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	return mi
 
 
