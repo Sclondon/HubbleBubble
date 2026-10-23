@@ -372,15 +372,14 @@ func _draw_away() -> void:
 	var r: Rect2 = buttons["go_scope"].rect
 	_box(r, Color("6a5a9a"), INK, 4, 14)
 	var c := r.get_center()
-	var look := Vector2(sin(_t * 0.9) * 4.0, cos(_t * 0.7) * 2.0)
-	Icons.blob(self, Icons.oval(c, Vector2(24, 17)), Color("fffdf2"), 3)
-	draw_circle(c + look, 10, Color("3ac0a8"))
-	draw_circle(c + look, 5, INK)
-	draw_circle(c + look + Vector2(-3, -3), 2, Color.WHITE)
-	# red veins
-	for k in 3:
-		var a := PI + 0.5 + k * 0.4
-		Icons.line(self, PackedVector2Array([c + Vector2(cos(a), sin(a)) * 22, c + Vector2(cos(a), sin(a)) * 15]), 2, Color("d8303a"))
+	# a plain cartoon eye: a white almond, a big black pupil glancing about
+	var look := Vector2(sin(_t * 0.9) * 5.0, 0.0)
+	var almond := PackedVector2Array()
+	for k in 24:
+		var a := TAU * k / 24.0
+		almond.append(c + Vector2(cos(a) * 24.0, sin(a) * 13.0 * (1.0 - 0.25 * absf(cos(a)))))
+	Icons.blob(self, almond, Color.WHITE, 4)
+	draw_circle(c + look, 8, INK)
 
 
 func _button_pause(r: Rect2) -> void:

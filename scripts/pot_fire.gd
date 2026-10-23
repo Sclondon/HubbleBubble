@@ -105,7 +105,7 @@ func _ready() -> void:
 	# wall behind; the logs, the bellows throw theirs out across the floor)
 	_light = OmniLight3D.new()
 	_light.name = "fire_light"
-	_light.position = Vector3(0, 0.3, 0.55)
+	_light.position = Vector3(0, 0.2, 1.35)
 	_light.light_color = Color(1.0, 0.55, 0.2)
 	_light.omni_range = 7.0
 	_light.omni_attenuation = 1.1
@@ -236,7 +236,8 @@ func _process(dt: float) -> void:
 	# The light flickers (a few slow waves and a fast shiver), brighter with the heat and the bellows
 	var flick := 0.78 + 0.12 * sin(_t * 7.3) + 0.07 * sin(_t * 13.1 + 1.7) + 0.05 * sin(_t * 23.0)
 	_light.light_energy = light_energy * flick * (0.6 + 0.4 * k)
-	_light.position = Vector3(0.05 * sin(_t * 5.0), 0.3 + 0.04 * sin(_t * 9.0), 0.55)
+	# (out in front of the pot, low, so it lights the iron and throws the pot's shadow up the wall behind)
+	_light.position = Vector3(0.05 * sin(_t * 5.0), 0.2 + 0.04 * sin(_t * 9.0), 1.35)
 	_glow_mat.set_shader_parameter("strength", (0.35 + 0.25 * k) * flick)
 	for m in _skirts:
 		m.set_shader_parameter("clock", _t * (0.8 + 0.3 * k))

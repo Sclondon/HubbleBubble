@@ -25,6 +25,10 @@ ROOT = ARGS[0]
 ONLY = ARGS[1] if len(ARGS) > 1 else ""
 
 
+## While on (the witches), everything is built low-poly: no subdivision, fewer sides, flat-shaded faces
+LOW = False
+
+
 def lin(c):
     if isinstance(c, Vector):
         return c.copy()
@@ -63,6 +67,9 @@ def bake(ob):
 
 
 def grow(name, points, edges, radii, sub=2, smooth=True):
+    if LOW:
+        sub = 0
+        smooth = False
     """A limb, a nose, a strand of hair: the Skin modifier round a line of points, then smoothed"""
     me = bpy.data.meshes.new(name)
     me.from_pydata([tuple(p) for p in points], edges, [])
@@ -82,6 +89,9 @@ def grow(name, points, edges, radii, sub=2, smooth=True):
 
 
 def lathe(name, rings, seg=24, sub=1, cap_top=True, cap_bottom=True, wobble=None, shape=None):
+    if LOW:
+        sub = 0
+        seg = max(7, seg // 2)
     """Spun round Z: `rings` is a list of (z, radius_x, radius_y, y_offset). `wobble(angle, z)` adds to the radius;
     `shape(angle)` scales it (a soft pentagon, say)."""
     bm = bmesh.new()
@@ -113,12 +123,16 @@ def lathe(name, rings, seg=24, sub=1, cap_top=True, cap_bottom=True, wobble=None
         ob.modifiers.new("sub", "SUBSURF").levels = sub
         ob = bake(ob)
     for p in ob.data.polygons:
-        p.use_smooth = True
+        p.use_smooth = not LOW
     return ob
 
 
 def egg(name, centre, radii, seg=16, rings=10, sub=1, shape=None):
     """A ball, squashed to `radii`; `shape(v)` may move each vertex (local to the centre) afterwards"""
+    if LOW:
+        sub = 0
+        seg = max(6, seg // 2 + 1)
+        rings = max(4, rings // 2 + 1)
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=rings, radius=1.0)
     for v in bm.verts:
@@ -134,7 +148,7 @@ def egg(name, centre, radii, seg=16, rings=10, sub=1, shape=None):
         ob.modifiers.new("sub", "SUBSURF").levels = sub
         ob = bake(ob)
     for p in ob.data.polygons:
-        p.use_smooth = True
+        p.use_smooth = not LOW
     return ob
 
 
@@ -155,7 +169,7 @@ def tube(name, a, b, ra, rb, seg=12, sub=1, caps=True):
         ob.modifiers.new("sub", "SUBSURF").levels = sub
         ob = bake(ob)
     for p in ob.data.polygons:
-        p.use_smooth = True
+        p.use_smooth = not LOW
     return ob
 
 
@@ -303,6 +317,15 @@ INK = "#1a1018"
 
 
 def build_witch(spec):
+    global LOW
+    LOW = True
+    try:
+        _build_witch(spec)
+    finally:
+        LOW = False
+
+
+def _build_witch(spec):
     fresh()
     rnd = random.Random(spec["name"])
     h = spec["height"]
@@ -577,7 +600,30 @@ def build_witch(spec):
         bun = egg("hair_bun", head_c + F * Vector((0, 0.3, 0.05)), (0.15, 0.13, 0.15), seg=12, rings=8, sub=1)
         paint(bun, lambda co, n: lin(hc) * (0.75 + 0.25 * max(0.0, n.z)))
         hair.append(bun)
-    n_strands = {"long": 13, "wild": 14, "bob": 0, "pigtails": 6, "bun": 6}.get(style, 10)
+    if style == "long":
+        # Long hair in a few broad chunky locks down the back and over the shoulders
+        for sgn in (1, -1):
+            side = box("hair_lock", head_c + F * Vector((sgn * 0.27, 0.02, -0.38)), (0.1, 0.3, 0.78), bevel=0.02,
+                       rot=Matrix.Rotation(-sgn * 0.1, 3, "Y"))
+            paint(side, lambda co, n: lin(hc) * (0.7 + 0.3 * max(0.0, -n.y)))
+            hair.append(side)
+        back = box("hair_back", head_c + F * Vector((0, 0.2, -0.42)), (0.58, 0.14, 0.86), bevel=0.02)
+        paint(back, lambda co, n: lin(hc) * 0.8)
+        hair.append(back)
+        for k in range(4):
+            tip = egg("hair_tip", head_c + F * Vector((-0.21 + k * 0.14, 0.2, -0.86)), (0.08, 0.07, 0.1), seg=6, rings=4, sub=0)
+            paint(tip, lambda co, n: lin(hc) * 0.75)
+            hair.append(tip)
+    elif style == "wild":
+        # Wild hair as big puffs bursting out from under the hat
+        for k in range(9):
+            a = -2.0 + 4.0 * k / 8.0
+            c_ = head_c + F * Vector((math.sin(a) * 0.32, math.cos(a) * 0.28 + 0.04, -0.12 + 0.06 * math.sin(k * 2.1)))
+            r_ = 0.13 + 0.05 * ((k * 7) % 3) / 2.0
+            puff = egg("hair_puff", c_, (r_, r_ * 0.9, r_ * 0.85), seg=6, rings=4, sub=0)
+            paint(puff, lambda co, n: lin(hc) * (0.7 + 0.3 * max(0.0, n.z)))
+            hair.append(puff)
+    n_strands = 0
     for k in range(n_strands):
         a = -1.9 + 3.8 * k / max(1, n_strands - 1)
         root = head_c + F * Vector((math.sin(a) * 0.29, math.cos(a) * 0.26, 0.0))
