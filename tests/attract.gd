@@ -31,6 +31,7 @@ func _initialize() -> void:
 
 func _start() -> void:
 	await process_frame
+	main._boot_t = 99.0
 	main.start_game()
 	main.night = night
 	main._start_night()

@@ -28,7 +28,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	await _frames(10)
+	await _frames(80)
 	await _shot("title")
 	if only.begins_with("look_"):
 		main.start_free()
