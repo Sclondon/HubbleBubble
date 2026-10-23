@@ -250,7 +250,7 @@ func _frame() -> void:
 		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.9, 0.6)
 		# (a shorter screen shows less top to bottom: back off and up, to keep it all in)
 		var back := maxf(0.0, -spare)
-		camera.position = Vector3(0, 2.7 + maxf(spare, 0.0) * 0.2 + back * 0.7, 2.55 + maxf(spare, 0.0) * 0.5 + back * 1.6)
+		camera.position = Vector3(0, 2.7 + maxf(spare, 0.0) * 0.2 + back * 0.25, 2.55 + maxf(spare, 0.0) * 0.5 + back * 0.45)
 		camera.look_at(Vector3(0, 1.45, -1.0))
 	else:
 		# Wide: framed by height, close enough that the walls either side don't take over
@@ -629,6 +629,13 @@ func _process(dt: float) -> void:
 	# The floating book keeps up on the left of the view beside the pot, whatever its shape
 	if state == "play" or state == "intro":
 		hut._book_home = camera.project_position(Vector2(view.size) * Vector2(0.15, 0.42), 2.6)
+		hut.spots["book"].at = hut._book_home
+		hut.spots["book"].r = 0.22
+		# and the bellows at the lower right, by the fire
+		var bp := camera.project_position(Vector2(view.size) * Vector2(0.84, 0.83), 2.4)
+		hut.props["bellows"].position = bp
+		hut.spots["bellows"].at = bp + Vector3(0, 0.12, 0)
+		hut.spots["bellows"].r = 0.28
 	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
 		show_book_pages()
 	_update_speech(dt)

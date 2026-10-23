@@ -244,8 +244,8 @@ func _process(dt: float) -> void:
 		_tendrils.add_tendril(Vector3(cos(a) * r, 0.02, sin(a) * r), Color(look.light_colour, 0.45))
 	_tend_bubbles(dt)
 	_tend_steam(dt)
-	_waves.keep = lerpf(0.988, 0.965, look.thickness)
-	_waves.speed = lerpf(0.34, 0.2, look.thickness)
+	_waves.keep = lerpf(0.975, 0.94, thick())
+	_waves.speed = lerpf(0.22, 0.1, thick())
 	_waves.update(dt)
 	_tend_sparks(dt)
 
@@ -336,6 +336,11 @@ func float_in(model: String, at: Vector3) -> void:
 	node.position = Vector3(p.x, 0.05, p.y)
 
 
+## How thick it is, 0 to 1: every brew is a gloopy one, thicker still if its look says so
+func thick() -> float:
+	return lerpf(0.55, 1.0, look.thickness)
+
+
 ## Where a model is (its bounds in the model's own space, as it will be drawn)
 static func _bounds(node: Node3D) -> AABB:
 	var box := AABB()
@@ -352,7 +357,7 @@ static func _bounds(node: Node3D) -> AABB:
 ## How high the brew stands at a point (local x, z): its waves, its swell and its stirred dip, as the
 ## surface shader moves it
 func surface_at(p: Vector2) -> float:
-	var slow := lerpf(1.0, 0.45, look.thickness)
+	var slow := lerpf(1.0, 0.45, thick())
 	var boil := clampf(heat * 1.3 - 0.2, 0.0, 1.0)
 	var a := 0.02 + 0.045 * boil
 	var t := _clock
@@ -457,7 +462,7 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 			if depth > 0.0:
 				under += 1
 				var point_vel := vel + spin.cross(arm)
-				var push := Vector3(0, minf(depth, 0.1) * 300.0 / pts.size() * 2.0, 0) - point_vel * (6.0 / pts.size())
+				var push := Vector3(0, minf(depth, 0.16) * 150.0 / pts.size() * 2.0, 0) - point_vel * (6.0 / pts.size())
 				force += push
 				torque += arm.cross(push)
 		# The current carries it round; stirred, it tumbles more
@@ -483,7 +488,7 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 			vel += Vector3(randf_range(-0.3, 0.3), randf_range(0.4, 0.9), randf_range(-0.3, 0.3))
 			spin += Vector3(randf_range(-10, 10), randf_range(-5, 5), randf_range(-10, 10))
 		vel += force * h
-		vel *= 1.0 - h * 0.4
+		vel *= 1.0 - h * (0.4 + (3.0 * thick() if under > 0 else 0.0))
 		spin += torque * 900.0 * h / maxf(f.size * f.size * 40.0, 0.2) / 40.0
 		spin *= 1.0 - h * (2.0 if under > 0 else 0.3)
 		pos += vel * h
@@ -515,7 +520,7 @@ func _add_bubble(size_k := 1.0) -> void:
 				var r2 := randf_range(0.64, 0.76) * pent(a2)
 				_b.append({"at": Vector2(cos(a2), sin(a2)) * r2, "size": randf_range(0.03, 0.06) * look.bubble_size * size_k,
 						"t": 0.0, "life": randf_range(0.5, 1.1) * (1.0 + look.thickness * 1.5)})
-	var thick := look.thickness
+	var thick := thick()
 	_b.append({"at": Vector2(cos(a), sin(a)) * r, "size": randf_range(0.035, 0.075) * look.bubble_size * size_k * (1.0 + thick * 0.8),
 			"t": 0.0, "life": randf_range(0.45, 1.0) * (1.0 + thick * 1.5)})
 
@@ -607,7 +612,7 @@ func _apply(l: PotionLook) -> void:
 	_mat.set_shader_parameter("glow", l.glow)
 	_mat.set_shader_parameter("lines", l.lines)
 	_mat.set_shader_parameter("glints", l.glints)
-	_mat.set_shader_parameter("thickness", l.thickness)
+	_mat.set_shader_parameter("thickness", lerpf(0.55, 1.0, l.thickness))
 	_mat.set_shader_parameter("swirl", l.swirl)
 	var bm := _bubbles.material_override as ShaderMaterial
 	bm.set_shader_parameter("tint", l.bubble_colour)

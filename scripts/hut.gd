@@ -69,6 +69,7 @@ var _night_t := 0.0
 ## The pot (rattles while it cooks), the thermometer's needle, the floating book and its pages
 var _pot: Node3D
 var _needle: Node3D
+var _thermo: Node3D
 var _book: Node3D
 var _book_home := Vector3.ZERO
 var _book_scale := 1.0
@@ -105,6 +106,12 @@ func _process(dt: float) -> void:
 	var want := deg_to_rad(-135.0 + 270.0 * clampf(heat, 0.0, 100.0) / 100.0)
 	_needle_angle = lerp_angle(_needle_angle, want, minf(1.0, dt * 6.0))
 	_needle.rotation.z = -(_needle_angle + sin(t * 31.0) * 0.03 * h * h)
+	# Its dial turned to you, a little tipped back
+	var eye := get_viewport().get_camera_3d()
+	if eye != null:
+		var to := (eye.global_position - _thermo.global_position)
+		to.y *= 0.6
+		_thermo.basis = Basis.looking_at(-to.normalized(), Vector3.UP).scaled(Vector3.ONE * 1.05)
 	# The pot rattles and jumps while it cooks
 	if brew.cooking > 0.0:
 		var k := minf(1.0, brew.cooking * 2.0)
@@ -459,12 +466,15 @@ func _cauldron() -> void:
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
 	var thermo := Models.make("thermometer")
 	thermo.name = "thermometer"
-	thermo.position = Vector3(-0.78, 1.62, 0.3)
-	thermo.rotation = Vector3(-0.55, -0.9, 0)
-	thermo.scale = Vector3.ONE * 0.85
+	thermo.position = Vector3(-0.78, 1.6, 0.42)
+	thermo.scale = Vector3.ONE * 1.5
+	_thermo = thermo
 	_pot.add_child(thermo)
 	_needle = Models.make("thermometer_needle")
 	thermo.add_child(_needle)
+	# Drawn sharp over the soft N64 picture (Shop.SMOKE_LAYER), so it can be read
+	for mi: MeshInstance3D in thermo.find_children("*", "MeshInstance3D", true, false):
+		mi.layers = 4
 
 
 ## Moonlight in through the window behind, cool, catching the customers' shoulders
@@ -559,10 +569,10 @@ func _shelf() -> void:
 	spots["book"] = {"at": _book_home, "r": 0.34}
 	var bellows := Node3D.new()
 	bellows.name = "bellows"
-	bellows.position = Vector3(0.95, 0.75, 0.95)
+	bellows.position = Vector3(1.12, 1.15, 0.35)
 	var d := (Vector3(0, 0, 0) - bellows.position).normalized()
 	bellows.rotation = Vector3(0, atan2(d.z, -d.x), 0.2)
-	bellows.scale = Vector3.ONE * 1.3
+	bellows.scale = Vector3.ONE * 0.9
 	add_child(bellows)
 	bellows.add_child(Models.make("bellows"))
 	_bellows_top = Models.make("bellows_top")
@@ -692,8 +702,10 @@ func _animate_stick(dt: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var want := stick_target
 	if not stirring:
-		var rest := 0.4 + sin(t * 0.9) * 0.08
-		want = Vector3(cos(rest) * 0.5, BREW_LEVEL, sin(rest) * 0.5)
+		# Let go, it stays where it was, carried round a little by the brew
+		var flat := Vector2(stick_target.x, stick_target.z).rotated(brew.current * dt * 0.5)
+		stick_target = Vector3(flat.x, BREW_LEVEL, flat.y)
+		want = stick_target
 	var was := _tip
 	_tip = _tip.lerp(want, minf(1.0, dt * (22.0 if stirring else 3.0)))
 	var flat_out := Vector3(_tip.x, 0, _tip.z)
