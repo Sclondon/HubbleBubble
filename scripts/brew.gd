@@ -33,6 +33,9 @@ var _bubbles: MultiMeshInstance3D
 var _streamers: Streamers
 var _tendrils: Streamers
 var _clouds: Clouds
+var _shapes: MultiMeshInstance3D
+var _shape_list: Array[Dictionary] = []
+var _shape_due := 2.0
 var _cloud_due := 0.0
 var _haze: MultiMeshInstance3D
 var _haze_cards: Array[Dictionary] = []
@@ -84,6 +87,8 @@ func _ready() -> void:
 	_clouds = Clouds.new()
 	_clouds.name = "clouds"
 	add_child(_clouds)
+	_shapes = _multi("shapes", _card(), preload("res://shaders/smoke_shape.gdshader"), 6)
+	_shapes.layers = 4
 	_haze = _multi("haze", _card_foot(), preload("res://shaders/haze.gdshader"), 5)
 	_haze.multimesh.visible_instance_count = 5
 	_haze.custom_aabb = AABB(Vector3(-3, -1, -3), Vector3(6, 8, 6))
@@ -108,6 +113,10 @@ func _ready() -> void:
 
 ## The look it's becoming (it eases toward it), or at once
 func set_look(l: PotionLook, at_once := false) -> void:
+	# Becoming something with a shape of its own, the shape pops out at once
+	if l.smoke_shape > 0 and l.smoke_shape != _target.smoke_shape:
+		smoke_shape(l.smoke_shape, l.shape_colour, l.shape_size)
+		_shape_due = l.shape_every
 	_target = l
 	if at_once:
 		look = l
@@ -190,6 +199,13 @@ func _process(dt: float) -> void:
 	_glow_light.light_color = _light.light_color
 	_glow_light.light_energy = look.light_energy * (0.5 + heat * 0.8) * (0.3 + look.glow) * flick * (1.0 - murk * 0.7) + _flash * 1.5
 	_tend_haze(dt)
+	# Now and then its smoke shape pops out of it (more often when it's hot)
+	if look.smoke_shape > 0 and murk < 0.5:
+		_shape_due -= dt * (0.5 + heat)
+		if _shape_due <= 0.0:
+			_shape_due = look.shape_every
+			smoke_shape(look.smoke_shape, look.shape_colour, look.shape_size)
+	_tend_shapes(dt)
 	# Now and then a puff of smoke rolls up off it, more when it's hot
 	_cloud_due += dt * look.steam * (0.15 + heat * 1.2) * (1.0 + murk)
 	while _cloud_due >= 1.0:
@@ -210,6 +226,39 @@ func _process(dt: float) -> void:
 	_waves.speed = lerpf(0.34, 0.2, look.thickness)
 	_waves.update(dt)
 	_tend_sparks(dt)
+
+
+# --- shapes of smoke ---
+
+## A shape of smoke pops out of the brew and rises, billowing out and fading: 1 a heart, 2 a skull and
+## crossbones, 3 a star, 4 a moon, 5 a ghost, 6 a spiral
+func smoke_shape(which: int, col: Color, size := 1.0) -> void:
+	if _shape_list.size() >= 6:
+		_shape_list.remove_at(0)
+	_shape_list.append({"shape": which, "col": col, "size": size, "t": 0.0, "life": randf_range(2.6, 3.2), "seed": randf(),
+			"x": randf_range(-0.2, 0.2), "drift": randf_range(-0.12, 0.12), "tilt": randf_range(-0.15, 0.15)})
+	ripple(Vector2(_shape_list[-1].x, 0.0), 1.0)
+	_waves.foam(Vector2(_shape_list[-1].x, 0.0), 0.6, 0.12)
+
+
+func _tend_shapes(dt: float) -> void:
+	var mm := _shapes.multimesh
+	var shown := 0
+	for i in range(_shape_list.size() - 1, -1, -1):
+		_shape_list[i].t += dt
+		if _shape_list[i].t >= _shape_list[i].life:
+			_shape_list.remove_at(i)
+	for sh in _shape_list:
+		var k: float = sh.t / sh.life
+		# Pops up out of the brew with a bounce, then rises slowly, swelling
+		var pop := 1.0 - pow(1.0 - minf(k / 0.15, 1.0), 3.0)
+		var s: float = sh.size * (0.25 + 0.4 * pop + 0.35 * k)
+		var at := Vector3(sh.x + sh.drift * k + sin(k * 6.0 + sh.seed * 6.0) * 0.04, 0.25 * pop + 0.9 * k + s * 0.5, 0.05)
+		mm.set_instance_transform(shown, Transform3D(Basis(Vector3.BACK, sh.tilt * sin(k * 4.0)).scaled(Vector3.ONE * s), at))
+		mm.set_instance_custom_data(shown, Color(sh.shape, sh.seed, k, 0))
+		mm.set_instance_color(shown, sh.col)
+		shown += 1
+	mm.visible_instance_count = shown
 
 
 # --- the glow standing up off it ---

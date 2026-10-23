@@ -21,3 +21,5 @@ steam = 0.8
 steam_colour = Color(1, 0.9411765, 0.8156863, 0.55)
 sparkles = 1.4
 sparkle_colour = Color(1, 0.9490196, 0.47843137, 1)
+smoke_shape = 3
+shape_colour = Color(1, 1, 0.8, 0.85)

@@ -126,7 +126,10 @@ func _process(dt: float) -> void:
 ## The brew becomes what's in it: its look for the effect it's making, murky when spoilt
 func set_brew(col: Color, murky := false, effect := "") -> void:
 	brew.murk = 1.0 if murky else 0.0
-	if not murky:
+	if murky:
+		# Spoilt: a skull and crossbones of dirty smoke
+		brew.smoke_shape(2, Color(0.35, 0.3, 0.22, 0.9), 1.1)
+	else:
 		brew.set_look(PotionLook.for_effect(effect, col) if effect != "" else PotionLook.from_colour(col))
 
 

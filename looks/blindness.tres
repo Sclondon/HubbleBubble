@@ -20,3 +20,5 @@ bubble_colour = Color(0.5411765, 0.5411765, 0.6039216, 1)
 steam = 1.4
 steam_colour = Color(0.3529412, 0.3529412, 0.41568628, 0.55)
 sparkle_colour = Color(0.5411765, 0.5411765, 0.6039216, 1)
+smoke_shape = 6
+shape_colour = Color(0.6, 0.6, 0.7, 0.8)

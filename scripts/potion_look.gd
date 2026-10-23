@@ -41,6 +41,15 @@ extends Resource
 @export_range(0.0, 3.0) var steam := 1.0
 @export var steam_colour := Color(0.85, 0.95, 0.9, 0.55)
 
+@export_group("Smoke shapes")
+## A shape of smoke that pops out of it now and then (shaders/smoke_shape.gdshader): a heart for a
+## love potion, a skull and crossbones for a curse...
+@export_enum("None", "Heart", "Skull and crossbones", "Star", "Moon", "Ghost", "Spiral") var smoke_shape := 0
+## Its colour (alpha: how solid), how often one pops out (seconds, fewer when it's hot), how big
+@export var shape_colour := Color(1.0, 1.0, 1.0, 0.85)
+@export_range(1.0, 20.0) var shape_every := 5.0
+@export_range(0.3, 2.0) var shape_size := 1.0
+
 @export_group("Sparkles")
 ## Glints that fizz up out of it
 @export_range(0.0, 3.0) var sparkles := 0.0
