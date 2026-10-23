@@ -82,6 +82,8 @@ var smoke_view: SubViewport
 var smoke_camera: Camera3D
 var smoke_screen: TextureRect
 var pages_hud: Hud
+## The order notes, hanging in the hut
+var tickets: Tickets
 var hud: Hud
 var album: Album
 var sfx: Sfx
@@ -195,6 +197,9 @@ func _ready() -> void:
 	camera.current = true
 	camera.cull_mask = 0xFFFFF & ~SMOKE_LAYER
 	view.add_child(camera)
+	tickets = Tickets.new()
+	tickets.name = "tickets"
+	view.add_child(tickets)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	hud = Hud.new()
@@ -298,6 +303,25 @@ func _atmosphere() -> Environment:
 	return e
 
 
+## The order notes, pegged on their string just in front of you where the tickets are on the screen
+func update_tickets() -> void:
+	var list := []
+	if mode == "shop" and state in ["play", "intro"]:
+		for i in mini(orders.size(), 3):
+			var o: Dictionary = orders[i]
+			list.append({"name": Book.POTIONS[o.potion].name, "frac": clampf(o.patience / o.full, 0.0, 1.0), "selected": i == selected})
+	var spots := []
+	var k := Vector2(view.size) / get_viewport().get_visible_rect().size
+	for i in 3:
+		var r: Rect2 = hud._tickets[i] if hud != null and i < hud._tickets.size() else Rect2(0, 0, 10, 10)
+		var top := camera.project_position(Vector2(r.get_center().x, r.position.y - 6) * k, 1.6)
+		var left := camera.project_position(Vector2(r.position.x, r.position.y) * k, 1.6)
+		var right := camera.project_position(Vector2(r.end.x, r.position.y) * k, 1.6)
+		spots.append([top, left.distance_to(right)])
+	var light := Color.WHITE.lerp(hut.brew.look.light_colour, 0.3) * (0.7 + 0.3 * hut.brew.light_now())
+	tickets.show_orders(spots, list, camera.global_basis, light, _boot_t)
+
+
 ## The floating book shows the pages it was left open at (redrawn when they change, and while
 ## the book's pictures are still being taken)
 func show_book_pages() -> void:
@@ -340,6 +364,8 @@ func tap(id: String) -> void:
 			toggle_shop()
 		"tap":
 			drain()
+		"water":
+			fill_water()
 		"swamp_window":
 			visit_swamp()
 		"balcony":
@@ -648,13 +674,14 @@ func _process(dt: float) -> void:
 	smoke_camera.global_transform = camera.global_transform
 	smoke_camera.fov = camera.fov
 	smoke_camera.keep_aspect = camera.keep_aspect
+	update_tickets()
 	# The floating book keeps up on the left of the view beside the pot, whatever its shape
 	if state == "play" or state == "intro":
 		hut._book_home = camera.project_position(Vector2(view.size) * Vector2(0.15, 0.42), 2.6)
 		hut.spots["book"].at = hut._book_home
 		hut.spots["book"].r = 0.22
 		# and the bellows at the lower right, by the fire
-		var bp := camera.project_position(Vector2(view.size) * Vector2(0.84, 0.83), 2.4)
+		var bp := camera.project_position(Vector2(view.size) * Vector2(0.84, 0.9), 2.4)
 		hut.props["bellows"].position = bp
 		# its nozzle turned on the fire
 		var to_fire := Vector3(0, 0.15, 0) - bp
@@ -876,7 +903,7 @@ func _remove_order(i: int) -> void:
 
 ## A key (or anything not dragged): it's thrown in from the table
 func add(which: int) -> void:
-	if not _brewing() or not stocked(which):
+	if not _brewing() or not stocked(which) or hut.level < 0.6:
 		return
 	hut.poke("jar%d" % which)
 	hut.toss(which, _land)
@@ -884,7 +911,7 @@ func add(which: int) -> void:
 
 ## Picks an ingredient up off the table, to carry over to the pot
 func grab(which: int, at: Vector2) -> void:
-	if not _brewing() or not stocked(which):
+	if not _brewing() or not stocked(which) or hut.level < 0.6:
 		hut.poke("jar%d" % which, true)
 		Sfx.play("huff", 1.5, -8.0)
 		return
@@ -1146,6 +1173,15 @@ func drain() -> void:
 	if not brew.is_empty():
 		hut.fresh()
 		_reset_brew()
+
+
+## Opens the cold-water tap: fresh swamp water runs in, filling the pot back up and cooling it
+func fill_water() -> void:
+	if not _brewing():
+		return
+	hut.fill()
+	heat = maxf(5.0, heat - 35.0)
+	Sfx.play("slosh", 1.3)
 
 
 ## Tips the pot out to start again

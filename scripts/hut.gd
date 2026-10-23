@@ -33,7 +33,13 @@ const SWAMP_HOLE := Rect2(-2.4, 1.9, 0.9, 1.2)
 const DOOR_HOLE := Rect2(1.42, 0.0, 1.0, 2.75)
 const WALL_Z := -3.0
 ## Where the drain tap sits on the pot
-const TAP_AT := Vector3(-0.55, 0.62, 0.8)
+const TAP_AT := Vector3(-0.66, 0.78, 0.86)
+## Where its handle turns, and where the brew comes out of its spout (as the cauldron model has them)
+const TAP_HANDLE := Vector3(-0.687, 0.86, 0.886)
+const TAP_SPOUT := Vector3(-0.785, 0.65, 1.013)
+## The cold-water pipe in over the rim on the right: its valve wheel, and the mouth the water falls from
+const WATER_VALVE := Vector3(0.98, 1.66, 0.25)
+const WATER_MOUTH := Vector3(0.55, 1.5, 0.25)
 ## How long the stirring stick is, as a share of its model
 const STICK_SCALE := 0.62
 ## The round wall: its middle (on the z axis) and how far out it is
@@ -84,6 +90,11 @@ var _dust: MultiMesh
 var _dust_list: Array[Dictionary] = []
 var _tap_handle: Node3D
 var _pour := 0.0
+var _fill := 0.0
+var _valve: Node3D
+## How full the pot is (1 full, 0 drained), and where it's going
+var level := 1.0
+var level_to := 1.0
 var _book: Node3D
 var _book_home := Vector3.ZERO
 var _book_scale := 1.0
@@ -118,6 +129,10 @@ func _process(dt: float) -> void:
 	fire.intensity = 0.6 + h * 1.3 + _flare * 0.6
 	fire.light_energy = 2.0 + h * 3.5 + _flare * 2.0
 	brew.heat = h
+	# The pages take the potion's light (lit by it, as everything is, but always readable)
+	var page_lit := Color.WHITE.lerp(brew.look.light_colour, 0.35) * (0.45 + 0.45 * brew.light_now())
+	for i in 2:
+		((_book.get_child(0).get_node("page%d" % i) as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = page_lit
 	for sp in _item_spots:
 		sp.light_color = brew.look.light_colour.lerp(Color(1.0, 0.9, 0.75), 0.35)
 		sp.light_energy = 1.4 * brew.light_now()
@@ -153,8 +168,6 @@ func _process(dt: float) -> void:
 	# Turned to whoever's looking, so its pages can be read from anywhere
 	var cam := get_viewport().get_camera_3d()
 	var to := ((cam.global_position if cam != null else Vector3(0, 3.0, 3.2)) - _book.position).normalized()
-	# (half turned to the pot too, so its light falls on the pages)
-	to = (to + (brew.global_position - _book.global_position).normalized() * 0.8).normalized()
 	_book.basis = Basis.looking_at(-to, Vector3.UP).scaled(Vector3.ONE * _book_scale) * Basis(Vector3.BACK, sin(t * 0.9) * 0.04)
 
 
@@ -409,24 +422,33 @@ func _cauldron() -> void:
 	brew.name = "brew"
 	brew.position = Vector3(0, BREW_LEVEL, 0)
 	_pot.add_child(brew)
-	# A brass drain tap low on the front left of the belly, to let the brew out
-	var tap := Node3D.new()
-	tap.name = "tap"
-	tap.position = TAP_AT
-	tap.rotation.y = 0.6
-	_pot.add_child(tap)
-	var body := Shape.new()
-	body.tube(Vector3(0, 0, -0.08), Vector3(0, 0, 0.1), 0.05, 0.045, Color("c8902a"), Color("8a5a1a"), 8)
-	body.tube(Vector3(0, 0, 0.1), Vector3(0, -0.08, 0.13), 0.04, 0.032, Color("c8902a"), Color("8a5a1a"), 8)
-	tap.add_child(body.piece("tap_body"))
-	_tap_handle = Node3D.new()
-	_tap_handle.position = Vector3(0, 0.06, 0.03)
-	tap.add_child(_tap_handle)
-	var handle := Shape.new()
-	handle.tube(Vector3(0, 0, 0), Vector3(0, 0.07, 0), 0.015, 0.015, Color("8a5a1a"), null, 6)
-	handle.box(Vector3(0, 0.08, 0), Vector3(0.16, 0.03, 0.03), Color("e8b040"), Color("a87a2a"))
-	_tap_handle.add_child(handle.piece("tap_handle"))
+	# The drain tap is part of the pot (art/make_models.py); its handle turns, so it's its own model
+	_tap_handle = Models.make("cauldron_tap_handle")
+	_tap_handle.position = TAP_HANDLE
+	_tap_handle.rotation.y = 0.35
+	_pot.add_child(_tap_handle)
 	spots["tap"] = {"at": Vector3.ZERO, "r": 0.2}
+	# The cold-water pipe, out of the wall on the right and in over the rim, a valve wheel on it
+	var pipe := Shape.new()
+	var brass := Color("b87a22")
+	pipe.tube(Vector3(2.6, 1.66, 0.25), WATER_MOUTH + Vector3(0, 0.16, 0), 0.06, 0.06, brass, Color("8a5a1a"), 8)
+	pipe.ball(WATER_MOUTH + Vector3(0, 0.16, 0), Vector3(0.075, 0.075, 0.075), brass, null, 8, 5)
+	pipe.tube(WATER_MOUTH + Vector3(0, 0.16, 0), WATER_MOUTH, 0.055, 0.065, brass, Color("8a5a1a"), 8)
+	for x: float in [1.8, 2.4]:
+		pipe.box(Vector3(x, 1.66, 0.25), Vector3(0.05, 0.16, 0.16), Color("6b5a4a"), Color("4a3a2a"))
+	# (a little shine of its own, so the brass shows in the dark)
+	add_child(pipe.piece("water_pipe", Shape.mat(0.6)))
+	_valve = Node3D.new()
+	_valve.position = WATER_VALVE + Vector3(0, 0.12, 0)
+	add_child(_valve)
+	var wheel := Shape.new()
+	wheel.ring(Vector3.ZERO, 0.12, 0.02, Color("d84a3a"), 12, 5)
+	for k in 4:
+		var a := k * PI * 0.25
+		wheel.tube(Vector3(cos(a), 0, sin(a)) * -0.11, Vector3(cos(a), 0, sin(a)) * 0.11, 0.012, 0.012, Color("d84a3a"), null, 5)
+	wheel.tube(Vector3(0, -0.12, 0), Vector3.ZERO, 0.02, 0.02, brass, null, 6)
+	_valve.add_child(wheel.piece("valve_wheel", Shape.mat(0.7)))
+	spots["water"] = {"at": WATER_VALVE + Vector3(0, 0.1, 0), "r": 0.22}
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
 	# (a faint glow of its own, so the dial reads even in the rim's shadow)
 	var thermo := Models.make("thermometer")
@@ -504,19 +526,37 @@ func _animate_air(dt: float) -> void:
 			p.y = 0.7
 		m.at = p
 		_dust.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * m.size), p))
+	# The water tap: its wheel spins while it runs, a stream of cold water falling into the pot
+	if _fill > 0.0:
+		_fill -= dt
+		_valve.rotation.y += dt * 8.0
+		var mouth := global_transform * WATER_MOUTH
+		brew.water_drop(brew.to_local(mouth))
+	# The level eases to where it's going (it drains away, it fills back up)
+	level = move_toward(level, level_to, dt * (0.8 if level_to < level else 0.6))
+	brew.position.y = lerpf(0.72, BREW_LEVEL, level)
+	brew.visible = level > 0.02
 	# The tap: its handle turned while it pours, a stream of brew falling from it
 	if _pour > 0.0:
 		_pour -= dt
-		_tap_handle.rotation.z = lerp_angle(_tap_handle.rotation.z, PI * 0.5, minf(1.0, dt * 10.0))
-		var spout := _pot.global_transform * TAP_AT + Vector3(0, -0.06, 0.08)
-		brew.pour_drop(brew.to_local(spout))
+		_tap_handle.rotation.y = lerp_angle(_tap_handle.rotation.y, 0.35 + PI * 0.5, minf(1.0, dt * 10.0))
+		var spout := _pot.global_transform * TAP_SPOUT
+		if level > 0.05:
+			brew.pour_drop(brew.to_local(spout))
 	else:
-		_tap_handle.rotation.z = lerp_angle(_tap_handle.rotation.z, 0.0, minf(1.0, dt * 6.0))
+		_tap_handle.rotation.y = lerp_angle(_tap_handle.rotation.y, 0.35, minf(1.0, dt * 6.0))
 
 
-## The drain tap opened: the brew pours out of it for a moment
+## The drain tap opened: the brew pours out of it and the pot empties
 func pour() -> void:
-	_pour = 1.2
+	_pour = 1.4
+	level_to = 0.0
+
+
+## The water tap opened: cold swamp water runs in and fills the pot back up
+func fill() -> void:
+	_fill = 1.6
+	level_to = 1.0
 
 
 ## Moonlight in through the window behind, cool, catching the customers' shoulders
@@ -670,8 +710,8 @@ func _floating_book() -> Node3D:
 		page.position = Vector3(sgn * 0.29, 0, 0.0)
 		page.rotation.y = sgn * 0.18
 		var m := StandardMaterial3D.new()
-		m.albedo_color = Color(0.62, 0.56, 0.46)
-		m.roughness = 1.0
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(0.6, 0.55, 0.45)
 		m.uv1_scale = Vector3(0.5, 1, 1)
 		m.uv1_offset = Vector3(0.0 if i == 0 else 0.5, 0, 0)
 		page.material_override = m

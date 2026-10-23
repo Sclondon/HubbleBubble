@@ -271,7 +271,7 @@ func _draw() -> void:
 		_:
 			_draw_top()
 			_draw_away()
-			_draw_tickets()
+			# (the order notes hang in the hut now: see Tickets)
 			_draw_counts()
 			_draw_speech()
 			if shop.book_open:
@@ -938,23 +938,24 @@ func _draw_open_book() -> void:
 	var pages := _book_pages()
 	var left := clampi(page_shown, 0, pages.size() - 1)
 	var w := size_now.x * 0.5
-	# A recipe, written large so it can be read from the cauldron: the name and its picture on the
-	# left, the steps on the right
+	# A recipe, seen from the cauldron: just its steps, as big pictures across both pages (the ingredients,
+	# the bellows for the fire, the stick, the wand), its name small over them
 	if pages[left].kind == "potion":
 		var pot: Dictionary = Book.POTIONS[pages[left].potion]
 		var lr := Rect2(6, 6, w - 9, size_now.y - 12)
 		var rr := Rect2(w + 3, 6, w - 9, size_now.y - 12)
 		_paper(lr)
 		_paper(rr)
-		var steps := Book.steps_of(pot.recipe)
-		_ink(_wrap_book(pot.name, 46, lr.size.x - 60), Vector2(lr.get_center().x, lr.position.y + 110), 46, HORIZONTAL_ALIGNMENT_CENTER, true)
-		_picture(Hut.INGREDIENT_MODELS[steps[0].what], Vector2(lr.get_center().x, lr.position.y + 450), 380)
-		var row := minf(150.0, (rr.size.y - 30) / steps.size())
-		var y := rr.position.y + 20 + row * 0.5
-		for st: Dictionary in steps:
-			_step_picture(st, Vector2(rr.position.x + row * 0.5 + 10, y), row * 0.9)
-			_ink(_wrap_book(Book.old_words(st), 50, rr.size.x - row - 30), Vector2(rr.position.x + row + 14, y), 50, HORIZONTAL_ALIGNMENT_LEFT, true)
-			y += row
+		var steps := Book.steps_of(pot.recipe).filter(func(st: Dictionary) -> bool: return st.kind != Book.BOTTLE)
+		_ink(pot.name, Vector2(size_now.x * 0.5, 40), 34, HORIZONTAL_ALIGNMENT_CENTER, true)
+		var per := ceili(steps.size() / 2.0)
+		for i in steps.size():
+			var page_r := lr if i < per else rr
+			var k := i if i < per else i - per
+			var n := per if i < per else steps.size() - per
+			var cell := (page_r.size.y - 90) / maxf(n, 1)
+			var sz := minf(cell * 1.3, page_r.size.x * 1.05)
+			_step_picture(steps[i], Vector2(page_r.get_center().x, page_r.position.y + 80 + cell * (k + 0.5)), sz)
 		return
 	_old_page(Rect2(6, 6, w - 9, size_now.y - 12), pages[left], left)
 	if left + 1 < pages.size():

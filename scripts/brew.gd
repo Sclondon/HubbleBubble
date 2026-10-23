@@ -483,6 +483,15 @@ static func _saturate(c: Color, k: float) -> Color:
 	return o
 
 
+## One drop of cold water falling into the pot from the pipe
+func water_drop(at: Vector3) -> void:
+	for i in 2:
+		if _drop_list.size() >= 48:
+			_drop_list.remove_at(0)
+		_drop_list.append({"at": at + Vector3(randf_range(-0.02, 0.02), 0, randf_range(-0.02, 0.02)), "vel": Vector3(0, -0.5, 0), "col": Color(0.55, 0.75, 0.7), "size": randf_range(0.02, 0.032), "kind": "blob", "t": 0.0, "spin": 0.0})
+	_waves.foam(Vector2(at.x, at.z), 0.3, 0.06)
+
+
 ## One drop of the brew falling out of the tap (a point local to the surface)
 func pour_drop(at: Vector3) -> void:
 	if randf() > 0.6:

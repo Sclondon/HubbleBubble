@@ -931,6 +931,36 @@ def build_props():
         foot = egg("cauldron_foot", (math.cos(a) * 0.48, math.sin(a) * 0.48, 0.14), (0.19, 0.19, 0.16), seg=8, rings=5, sub=0)
         paint(foot, lambda co, n: lin(BROWN_D).lerp(lin(BROWN), max(0.0, n.z) * 0.8 + 0.1))
         extra.append(foot)
+    # The drain tap, built into the belly low on the front left: a riveted brass plate on the iron, a
+    # stubby pipe out of it and a spout turned down. Its handle is a model of its own (cauldron_tap_handle,
+    # origin at its pivot) so the game can turn it. (The game's Hut.TAP_HANDLE and TAP_SPOUT match.)
+    ta = math.atan2(-0.8, -0.62)
+    td = Vector((math.cos(ta), math.sin(ta), 0))
+    tr = 1.0 * pent(ta)
+    tp = Vector((td.x * tr, td.y * tr, 0.78))
+    plate = egg("tap_plate", tp, (0.15, 0.15, 0.15), seg=10, rings=6, sub=0, shape=lambda v: Vector((v.x, v.y, v.z)))
+    plate.scale = (1, 1, 1)
+    plate.data.transform(Matrix.Translation(tp) @ Matrix.Rotation(ta, 4, "Z") @ Matrix.Diagonal((0.25, 1.0, 1.0, 1.0)) @ Matrix.Translation(-tp))
+    paint(plate, lambda co, n: lin("#a8701e").lerp(lin("#e8b040"), max(0.0, n.z) * 0.6))
+    extra.append(plate)
+    for k in range(4):
+        aa = math.pi / 4 + k * math.pi / 2
+        off = Vector((-td.y, td.x, 0)) * math.cos(aa) * 0.1 + Vector((0, 0, math.sin(aa) * 0.1))
+        rv = egg("tap_rivet", tp + td * 0.04 + off, (0.022, 0.022, 0.022), seg=6, rings=4, sub=0)
+        paint(rv, lambda co, n: lin("#f0d890"))
+        extra.append(rv)
+    pipe_ = tube("tap_pipe", tp - td * 0.05, tp + td * 0.22, 0.055, 0.05, seg=8)
+    paint(pipe_, lambda co, n: lin("#b87a22").lerp(lin("#f0c050"), max(0.0, n.z) * 0.6))
+    spout = tube("tap_spout", tp + td * 0.2, tp + td * 0.24 + Vector((0, 0, -0.13)), 0.05, 0.04, seg=8)
+    paint(spout, lambda co, n: lin("#b87a22"))
+    collar_ = tube("tap_collar", tp + td * 0.08 + Vector((0, 0, 0.03)), tp + td * 0.08 + Vector((0, 0, 0.08)), 0.04, 0.035, seg=8)
+    paint(collar_, lambda co, n: lin("#8a5a1a"))
+    extra += [pipe_, spout, collar_]
+    out["cauldron_tap_handle"] = [tube("tap_stem", (0, 0, 0), (0, 0, 0.07), 0.015, 0.015, seg=6),
+                                  box("tap_lever", (0, 0, 0.08), (0.18, 0.035, 0.035), bevel=0.008)]
+    paint(out["cauldron_tap_handle"][0], lambda co, n: lin("#8a5a1a"))
+    paint(out["cauldron_tap_handle"][1], lambda co, n: lin("#e8b040").lerp(lin("#a87a2a"), 0.4 * max(0.0, -n.z)))
+    print("tap handle pivot", tp + td * 0.08 + Vector((0, 0, 0.08)), "spout", tp + td * 0.24 + Vector((0, 0, -0.13)), "angle", ta)
     out["cauldron"] = [belly, inside] + extra
 
     # The fire pit: low-poly logs (six-sided, flat-shaded) laid in a star under the pot with their ends
