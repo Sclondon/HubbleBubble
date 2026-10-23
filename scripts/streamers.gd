@@ -9,6 +9,9 @@ extends MeshInstance3D
 const MAX := 30
 const SEGMENTS := 28
 
+## Drawn glowing, added over what's behind (shaders/streamer_glow.gdshader), for a potion's tendrils
+var glowing := false
+
 var _all: Array[Dictionary] = []
 var _mesh := ImmediateMesh.new()
 
@@ -16,10 +19,22 @@ var _mesh := ImmediateMesh.new()
 func _ready() -> void:
 	mesh = _mesh
 	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://shaders/streamer.gdshader")
+	mat.shader = preload("res://shaders/streamer_glow.gdshader") if glowing else preload("res://shaders/streamer.gdshader")
 	material_override = mat
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	custom_aabb = AABB(Vector3(-3, -1, -3), Vector3(6, 6, 6))
+	custom_aabb = AABB(Vector3(-3, -1, -3), Vector3(6, 7, 6))
+	# Drawn sharp over the N64 picture (Shop.SMOKE_LAYER)
+	layers = 4
+
+
+## A big slow tendril curling up high in S-bends (a potion's glow rising off it)
+func add_tendril(at: Vector3, col: Color) -> void:
+	add(at, col, 0.0, 3.2)
+	var s: Dictionary = _all[-1]
+	s.life = randf_range(4.0, 5.5)
+	s.rise = randf_range(0.45, 0.6)
+	s.turns = randf_range(0.3, 0.5)
+	s.wide = randf_range(0.18, 0.28)
 
 
 ## One streamer from a point (local), in a colour; `lively` makes it quicker and curlier (a burst)
@@ -72,21 +87,32 @@ func _ribbon(s: Dictionary, eye: Vector3) -> void:
 		a += curl * PI * 1.4
 		r *= 1.0 - 0.45 * smoothstep(0.75, 1.0, u)
 		pts.append(s.at + s.drift * y + Vector3(cos(a) * r, y, sin(a) * r))
+	# One side for each point (across the line, square to the eye), kept pointing the same way as the
+	# last so the ribbon never twists into pieces as the helix turns
+	var sides: Array[Vector3] = []
+	var last := Vector3.ZERO
+	for j in pts.size():
+		var along: Vector3 = (pts[mini(j + 1, pts.size() - 1)] - pts[maxi(j - 1, 0)]).normalized()
+		var side: Vector3 = along.cross(eye - pts[j])
+		if side.length() < 0.0001:
+			side = last
+		side = side.normalized()
+		if j > 0 and side.dot(last) < 0.0:
+			side = -side
+		last = side
+		sides.append(side * s.width)
+	var c := Color(col, col.a * fade)
 	for j in SEGMENTS:
 		var a: Vector3 = pts[j]
 		var b: Vector3 = pts[j + 1]
-		var along := (b - a).normalized()
-		var side_a: Vector3 = along.cross(eye - a).normalized() * s.width
-		var side_b: Vector3 = along.cross(eye - b).normalized() * s.width
 		var u0 := float(j) / SEGMENTS
 		var u1 := float(j + 1) / SEGMENTS
-		var c := Color(col, col.a * fade)
-		_vert(a - side_a, Vector2(0, u0), c)
-		_vert(a + side_a, Vector2(1, u0), c)
-		_vert(b + side_b, Vector2(1, u1), c)
-		_vert(a - side_a, Vector2(0, u0), c)
-		_vert(b + side_b, Vector2(1, u1), c)
-		_vert(b - side_b, Vector2(0, u1), c)
+		_vert(a - sides[j], Vector2(0, u0), c)
+		_vert(a + sides[j], Vector2(1, u0), c)
+		_vert(b + sides[j + 1], Vector2(1, u1), c)
+		_vert(a - sides[j], Vector2(0, u0), c)
+		_vert(b + sides[j + 1], Vector2(1, u1), c)
+		_vert(b - sides[j + 1], Vector2(0, u1), c)
 
 
 func _vert(p: Vector3, uv: Vector2, c: Color) -> void:

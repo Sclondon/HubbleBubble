@@ -846,12 +846,12 @@ def build_props():
     # either side and four stubby round feet. Nothing else on it.
     # The rim is at about 1.36-1.40 and the brew sits at 1.24 inside it (the game puts the brew's surface there).
     BROWN, BROWN_L, BROWN_D = "#a8522c", "#f0944c", "#4a2214"
-    # Not quite round: a soft pentagon, one flat side to the front (-Y). The game's brew follows the
-    # same shape (Brew.pent).
+    # Not round: a soft hexagon, low poly (twelve sides, no smoothing), a flat side to the front (-Y).
+    # The game's brew follows the same shape (Brew.pent).
     def pent(a):
-        return 1.0 + 0.07 * math.cos(5.0 * (a - math.radians(-54.0)))
+        return 1.0 + 0.06 * math.cos(6.0 * a)
     belly = lathe("cauldron", [(0.26, 0.2, 0.2), (0.32, 0.55, 0.55), (0.46, 0.84, 0.84), (0.7, 1.0, 1.0), (0.95, 1.02, 1.02),
-                               (1.12, 0.94, 0.94), (1.2, 0.9, 0.9)], seg=40, sub=2, cap_top=False, shape=pent)
+                               (1.12, 0.94, 0.94), (1.2, 0.9, 0.9)], seg=12, sub=0, cap_top=False, shape=pent)
 
     def copper(co, n):
         up = max(0.0, n.z) * 0.5 + max(0.0, min(1.0, (co.z - 0.3) / 0.9)) * 0.5
@@ -862,15 +862,15 @@ def build_props():
             c = c.lerp(lin("#5a2a18"), 0.35)
         return c
     paint(belly, copper)
-    inside = lathe("cauldron_in", [(0.9, 0.7, 0.7), (1.1, 0.82, 0.82), (1.25, 0.8, 0.8), (1.36, 0.8, 0.8)], seg=40, sub=1, cap_top=False, shape=pent)
+    inside = lathe("cauldron_in", [(0.9, 0.7, 0.7), (1.1, 0.82, 0.82), (1.25, 0.8, 0.8), (1.36, 0.8, 0.8)], seg=12, sub=0, cap_top=False, shape=pent)
     paint(inside, lambda co, n: lin("#120806"))
     rim = lathe("cauldron_rim", [(1.12, 0.92, 0.92), (1.17, 0.97, 0.97), (1.35, 0.97, 0.97), (1.4, 0.93, 0.93), (1.41, 0.86, 0.86),
-                                 (1.39, 0.8, 0.8), (1.33, 0.79, 0.79)], seg=40, sub=1, cap_top=False, cap_bottom=False, shape=pent)
+                                 (1.39, 0.8, 0.8), (1.33, 0.79, 0.79)], seg=12, sub=0, cap_top=False, cap_bottom=False, shape=pent)
     paint(rim, lambda co, n: lin("#4a2214").lerp(lin("#8a4a28"), max(0.0, n.z) * 0.7 + 0.15))
     extra = [rim]
-    for k in range(18):
-        a = 2 * math.pi * k / 18
-        rivet = egg("cauldron_rivet", (math.cos(a) * 0.975 * pent(a), math.sin(a) * 0.975 * pent(a), 1.26), (0.035, 0.035, 0.035), seg=8, rings=5, sub=0)
+    for k in range(12):
+        a = 2 * math.pi * k / 12
+        rivet = egg("cauldron_rivet", (math.cos(a) * 0.975 * pent(a), math.sin(a) * 0.975 * pent(a), 1.26), (0.04, 0.04, 0.04), seg=6, rings=4, sub=0)
         paint(rivet, lambda co, n: lin("#9a94a8").lerp(lin("#f0ecf8"), max(0.0, n.z) * 0.8))
         extra.append(rivet)
     for sgn in (1, -1):
@@ -882,27 +882,59 @@ def build_props():
         extra += [tab, slot]
     for k in range(4):
         a = 2 * math.pi * k / 4 + math.pi / 4
-        foot = egg("cauldron_foot", (math.cos(a) * 0.48, math.sin(a) * 0.48, 0.14), (0.19, 0.19, 0.16), seg=12, rings=8, sub=1)
+        foot = egg("cauldron_foot", (math.cos(a) * 0.48, math.sin(a) * 0.48, 0.14), (0.19, 0.19, 0.16), seg=8, rings=5, sub=0)
         paint(foot, lambda co, n: lin(BROWN_D).lerp(lin(BROWN), max(0.0, n.z) * 0.8 + 0.1))
         extra.append(foot)
     out["cauldron"] = [belly, inside] + extra
 
-    # The fire pit: logs crossed in a bed of grey ash with embers in it (no ring of stones)
+    # The fire pit: low-poly logs (six-sided, flat-shaded) laid in a star under the pot with their ends
+    # poking out, burnt black toward the fire with glowing cracks, bark still on at the ends and pale
+    # sawn faces; a bed of grey ash, embers in it
     pit = []
-    ash = egg("ash", (0, 0, 0.0), (0.95, 0.9, 0.06), seg=20, rings=6, sub=1, shape=lambda v: Vector((v.x, v.y, max(v.z, 0.0))))
-    paint(ash, lambda co, n: lin("#4a4448").lerp(lin("#2a2428"), min(1.0, math.hypot(co.x, co.y))))
+    ash = egg("ash", (0, 0, 0.0), (1.2, 1.15, 0.06), seg=12, rings=4, sub=0, shape=lambda v: Vector((v.x, v.y, max(v.z, 0.0))))
+    paint(ash, lambda co, n: lin("#4a4448").lerp(lin("#2a2428"), min(1.0, math.hypot(co.x, co.y) / 1.2)))
     pit.append(ash)
-    for k in range(5):
-        a = math.pi * k / 5 + 0.3
+
+    def burnt(co, n):
+        r = math.hypot(co.x, co.y)
+        char = max(0.0, min(1.0, (1.15 - r) / 0.55))
+        c = lin("#6b4024").lerp(lin("#3a2414"), 0.4 * (math.sin(co.z * 40.0) > 0.3))
+        c = c.lerp(lin("#140c08"), char)
+        crack = math.sin(co.x * 23.0 + co.y * 7.0) * math.sin(co.y * 19.0 - co.z * 31.0)
+        if char > 0.35 and crack > 0.72:
+            c = lin("#ff6a1a").lerp(lin("#ffc84a"), (crack - 0.72) * 3.0)
+        if n.z < -0.5:
+            c = c * 0.5
+        return c
+
+    for k in range(6):
+        a = math.tau * k / 6 + 0.25
         d = Vector((math.cos(a), math.sin(a), 0))
-        log = grow("log", [-d * 0.78 + Vector((0, 0, 0.1 + (k % 2) * 0.06)), d * 0.1 + Vector((0, 0, 0.16 + (k % 2) * 0.05)), d * 0.78 + Vector((0, 0, 0.1 + (k % 2) * 0.06))],
-                   [(0, 1), (1, 2)], [0.1, 0.11, 0.09], sub=1)
-        paint(log, lambda co, n: lin("#6b4024").lerp(lin("#1a100a"), max(0.0, 1.0 - math.hypot(co.x, co.y) * 1.6)))
+        inner = d * 0.15 + Vector((0, 0, 0.22 + (k % 2) * 0.1))
+        outer = d * 1.35 + Vector((0, 0, 0.1))
+        bm = bmesh.new()
+        axis = outer - inner
+        rot = Vector((0, 0, 1)).rotation_difference(axis.normalized()).to_matrix().to_4x4()
+        spin = Matrix.Rotation(k * 0.5, 4, "Z")
+        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=6, radius1=0.12, radius2=0.105, depth=axis.length,
+                              matrix=Matrix.Translation((inner + outer) / 2) @ rot @ spin)
+        me = bpy.data.meshes.new("log")
+        bm.to_mesh(me)
+        bm.free()
+        log = link(bpy.data.objects.new("log", me))
+        for p in log.data.polygons:
+            p.use_smooth = False
+        paint(log, burnt)
         pit.append(log)
-    for k in range(10):
+        # The sawn face at the outer end, pale with a ring
+        face = egg("log_end", outer + d * 0.004, (0.09, 0.09, 0.09), seg=6, rings=3, sub=0)
+        face.scale = (1, 1, 1)
+        paint(face, lambda co, n: lin("#c89a6a").lerp(lin("#8a5a32"), 0.5 * (abs(math.sin(math.hypot(co.x, co.y) * 90.0)) > 0.8)))
+        pit.append(face)
+    for k in range(12):
         a = k * 2.3
-        r = 0.2 + (k % 4) * 0.12
-        em = egg("glow_ember", (math.cos(a) * r, math.sin(a) * r, 0.06), (0.05, 0.05, 0.025), seg=6, rings=4, sub=0)
+        r = 0.3 + (k % 4) * 0.2
+        em = egg("glow_ember", (math.cos(a) * r, math.sin(a) * r, 0.05), (0.06, 0.06, 0.03), seg=5, rings=3, sub=0)
         paint(em, lambda co, n: lin("#ff8a2a"))
         pit.append(em)
     out["firepit"] = pit
@@ -987,14 +1019,16 @@ def build_props():
         paint(cork, lit(plain("#d8a060", "#a8703a", h, h + 0.08)))
         return [g, lip, cork]
 
-    # Eye of newt: a big jar of eyeballs bobbing in green pickle
-    ing = jar("eyejar", 0.15, 0.36, "#c8f0e0")
-    pickle = lathe("pickle", [(0.02, 0.135, 0.135), (0.24, 0.14, 0.14)], seg=14, sub=0)
-    paint(pickle, lambda co, n: lin("#6ad0a0") * (0.7 + 0.3 * co.z / 0.24))
-    ing.append(pickle)
-    for k, p in enumerate([(-0.05, -0.02, 0.08), (0.06, 0.01, 0.12), (-0.02, -0.06, 0.19), (0.04, 0.04, 0.26), (-0.06, 0.04, 0.3)]):
-        ing.append(eyeball("eye", p, 0.06, iris=["#3ac0a8", "#e8b030", "#c8402a"][k % 3],
-                           look=Vector((rnd.uniform(-0.6, 0.6), -1, rnd.uniform(-0.2, 0.6)))))
+    # Eye of newt: a heap of eyeballs, glistening, piled on a little dish, all looking every which way
+    ing = []
+    dish = lathe("eyedish", [(0.0, 0.12, 0.12), (0.02, 0.17, 0.17), (0.05, 0.2, 0.2), (0.06, 0.19, 0.19)], seg=18, sub=1)
+    paint(dish, lambda co, n: lin("#6a5a7a").lerp(lin("#9a8aaa"), max(0.0, n.z) * 0.6))
+    ing.append(dish)
+    heap = [(-0.08, -0.04, 0.1), (0.07, -0.05, 0.1), (0.0, 0.07, 0.1), (-0.06, 0.07, 0.1), (0.09, 0.05, 0.1),
+            (-0.02, -0.01, 0.18), (0.05, 0.02, 0.19), (-0.06, 0.01, 0.2), (0.01, 0.0, 0.27)]
+    for k, p in enumerate(heap):
+        ing.append(eyeball("eye", p, 0.055 if k < 5 else 0.05, iris=["#3ac0a8", "#e8b030", "#c8402a", "#8a52c9"][k % 4],
+                           look=Vector((rnd.uniform(-0.8, 0.8), rnd.uniform(-1.0, -0.2), rnd.uniform(-0.2, 0.8)))))
     out["ing_eye"] = ing
 
     # Toadstools: three fat red-capped mushrooms on a mossy root, grass round them

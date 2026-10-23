@@ -13,6 +13,8 @@ const KEY_STIR_SPEED := TAU * 1.4
 ## The most things a pot holds before it's too full
 const MAX_STEPS := 8
 const N64_LINES := 228.0
+## The render layer smoke is on: drawn sharp at near full size over the soft N64 picture
+const SMOKE_LAYER := 4
 
 ## "play" (at the cauldron), "intro", "done", "over" (the cards of a night), "swamp", "tower" (the balcony)
 var state := "play"
@@ -47,6 +49,7 @@ var combo := 0
 var served := 0
 var lost := 0
 var speech := {}
+var _speech_queue: Array[Dictionary] = []
 var floaters: Array[Dictionary] = []
 var intro_t := 0.0
 var news := ""
@@ -74,6 +77,10 @@ var screen: TextureRect
 var n64 := true
 ## The floating book's two pages, drawn by a second Hud into their own little picture
 var pages_view: SubViewport
+## The smoke, drawn by a camera of its own at near full size, laid over the N64 picture
+var smoke_view: SubViewport
+var smoke_camera: Camera3D
+var smoke_screen: TextureRect
 var pages_hud: Hud
 var hud: Hud
 var album: Album
@@ -124,7 +131,24 @@ func _ready() -> void:
 	view.name = "view"
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.msaa_3d = Viewport.MSAA_DISABLED
+	view.world_3d = World3D.new()
 	add_child(view)
+	smoke_view = SubViewport.new()
+	smoke_view.name = "smoke_view"
+	smoke_view.transparent_bg = true
+	smoke_view.world_3d = view.world_3d
+	smoke_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	smoke_view.msaa_3d = Viewport.MSAA_2X
+	add_child(smoke_view)
+	smoke_camera = Camera3D.new()
+	smoke_camera.cull_mask = SMOKE_LAYER
+	var clear := Environment.new()
+	clear.background_mode = Environment.BG_CLEAR_COLOR
+	clear.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	clear.ambient_light_color = Color.WHITE
+	smoke_camera.environment = clear
+	smoke_camera.current = true
+	smoke_view.add_child(smoke_camera)
 	var under := CanvasLayer.new()
 	under.layer = -1
 	add_child(under)
@@ -138,6 +162,17 @@ func _ready() -> void:
 	screen.material = ShaderMaterial.new()
 	(screen.material as ShaderMaterial).shader = preload("res://shaders/n64.gdshader")
 	under.add_child(screen)
+	smoke_screen = TextureRect.new()
+	smoke_screen.name = "smoke"
+	smoke_screen.texture = smoke_view.get_texture()
+	smoke_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	smoke_screen.stretch_mode = TextureRect.STRETCH_SCALE
+	smoke_screen.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	smoke_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var premul := CanvasItemMaterial.new()
+	premul.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	smoke_screen.material = premul
+	under.add_child(smoke_screen)
 	var env := WorldEnvironment.new()
 	env.environment = _atmosphere()
 	view.add_child(env)
@@ -155,6 +190,7 @@ func _ready() -> void:
 	camera = Camera3D.new()
 	camera.name = "camera"
 	camera.current = true
+	camera.cull_mask = 0xFFFFF & ~SMOKE_LAYER
 	view.add_child(camera)
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -186,6 +222,8 @@ func _frame() -> void:
 	# The N64 filter: the 3D is drawn this many lines on its short side, then blown up soft
 	var k := N64_LINES / minf(s.x, s.y)
 	view.size = Vector2i(maxi(2, roundi(s.x * k)), maxi(2, roundi(s.y * k)))
+	var ks := minf(1.0, 1400.0 / maxf(s.x, s.y))
+	smoke_view.size = Vector2i(maxi(2, roundi(s.x * ks)), maxi(2, roundi(s.y * ks)))
 	(screen.material as ShaderMaterial).set_shader_parameter("amount", 1.0)
 	(screen.material as ShaderMaterial).set_shader_parameter("size", Vector2(view.size))
 	var tall := s.y > s.x * 1.1
@@ -228,10 +266,10 @@ func _atmosphere() -> Environment:
 	e.background_mode = Environment.BG_COLOR
 	e.background_color = Color(0.03, 0.02, 0.05)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.42, 0.34, 0.56)
+	e.ambient_light_color = Color(0.15, 0.12, 0.22)
 	e.ambient_light_energy = 1.0
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 1.6
+	e.tonemap_exposure = 1.45
 	e.fog_enabled = true
 	e.fog_light_color = Color(0.1, 0.07, 0.16)
 	e.fog_density = 0.045
@@ -574,6 +612,7 @@ func set_sound(on: bool) -> void:
 
 
 func _clear_customers() -> void:
+	_speech_queue.clear()
 	for c in get_tree().get_nodes_in_group("customer"):
 		c.queue_free()
 
@@ -582,6 +621,9 @@ func _clear_customers() -> void:
 
 func _process(dt: float) -> void:
 	_boot_t += dt
+	smoke_camera.global_transform = camera.global_transform
+	smoke_camera.fov = camera.fov
+	smoke_camera.keep_aspect = camera.keep_aspect
 	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
 		show_book_pages()
 	_update_speech(dt)
@@ -1142,10 +1184,14 @@ func _say_witch(_text: String) -> void:
 	pass
 
 
+## A customer says something. An urgent line (thanks, a complaint) is said at once; anything else
+## waits its turn behind whatever's being said, so nobody's order goes unsaid
 func _say_folk(text: String, voice: float, customer: Witch, urgent := false) -> void:
-	if not urgent and speech.get("who", "") == "folk" and speech.shown < speech.text.length():
-		return
-	speech = {"who": "folk", "text": text, "shown": 0.0, "life": 1.6 + text.length() * 0.04, "voice": voice, "customer": customer}
+	var line := {"who": "folk", "text": text, "shown": 0.0, "life": 1.6 + text.length() * 0.04, "voice": voice, "customer": customer}
+	if speech.is_empty() or urgent:
+		speech = line
+	else:
+		_speech_queue.append(line)
 
 
 func _update_speech(dt: float) -> void:
@@ -1163,11 +1209,16 @@ func _update_speech(dt: float) -> void:
 	if c != null and is_instance_valid(c):
 		(c as Witch).talking = talking
 	if not talking:
-		speech.life -= dt
+		# Someone waiting to speak cuts the pause short
+		speech.life -= dt * (3.0 if not _speech_queue.is_empty() else 1.0)
 		if speech.life <= 0.0:
 			if c != null and is_instance_valid(c):
 				(c as Witch).talking = false
 			speech = {}
+			while not _speech_queue.is_empty() and speech.is_empty():
+				var next: Dictionary = _speech_queue.pop_front()
+				if next.customer != null and is_instance_valid(next.customer):
+					speech = next
 
 
 ## (No floating words: what happens is seen and heard instead)

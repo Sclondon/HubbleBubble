@@ -31,6 +31,13 @@ var _mat: ShaderMaterial
 var _light: OmniLight3D
 var _bubbles: MultiMeshInstance3D
 var _streamers: Streamers
+var _tendrils: Streamers
+var _clouds: Clouds
+var _cloud_due := 0.0
+var _haze: MultiMeshInstance3D
+var _haze_cards: Array[Dictionary] = []
+var _tendril_due := 0.0
+var _glow_light: OmniLight3D
 var _waves: Waves
 var _sparks: MultiMeshInstance3D
 var _b: Array[Dictionary] = []
@@ -57,16 +64,38 @@ func _ready() -> void:
 	surface.name = "surface"
 	surface.mesh = _surface_mesh()
 	surface.material_override = _mat
+	# (on a layer of its own, so its own glow lights the room, not itself)
+	surface.layers = 2
 	add_child(surface)
 	_light = OmniLight3D.new()
 	_light.position = Vector3(0, 0.55, 0.15)
 	_light.omni_range = 9.0
 	_light.omni_attenuation = 1.3
+	_light.light_cull_mask = 0xFFFFF & ~2
 	add_child(_light)
 	_bubbles = _multi("bubbles", _dome(), preload("res://shaders/bubble.gdshader"), MAX_BUBBLES)
 	_streamers = Streamers.new()
 	_streamers.name = "streamers"
 	add_child(_streamers)
+	_tendrils = Streamers.new()
+	_tendrils.name = "tendrils"
+	_tendrils.glowing = true
+	add_child(_tendrils)
+	_clouds = Clouds.new()
+	_clouds.name = "clouds"
+	add_child(_clouds)
+	_haze = _multi("haze", _card_foot(), preload("res://shaders/haze.gdshader"), 5)
+	_haze.multimesh.visible_instance_count = 5
+	_haze.custom_aabb = AABB(Vector3(-3, -1, -3), Vector3(6, 8, 6))
+	for i in 5:
+		_haze_cards.append({"t": randf(), "life": randf_range(3.0, 4.5), "seed": randf(), "x": randf_range(-0.25, 0.25)})
+	# A second, wider light high over the pot: the potion's colour washing the room
+	_glow_light = OmniLight3D.new()
+	_glow_light.position = Vector3(0, 1.6, 0.3)
+	_glow_light.omni_range = 11.0
+	_glow_light.omni_attenuation = 0.8
+	_glow_light.light_cull_mask = 0xFFFFF & ~2
+	add_child(_glow_light)
 	_sparks = _multi("sparks", _card(), preload("res://shaders/spark.gdshader"), MAX_SPARKS)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
@@ -87,12 +116,12 @@ func set_look(l: PotionLook, at_once := false) -> void:
 
 ## Rings out from where something touched the surface (local x, z)
 func ripple(at: Vector2, power := 1.0) -> void:
-	_waves.push(at, 0.014 * power, 0.05 + 0.025 * minf(power, 2.0))
+	_waves.push(at, 0.03 * power, 0.05 + 0.03 * minf(power, 2.0))
 
 
 ## The stick drawn through the brew at a point (local x, z), going speed metres a second: a wake
 func wake(at: Vector2, speed: float) -> void:
-	_waves.push(at, clampf(0.003 + speed * 0.006, 0.0, 0.02), 0.05)
+	_waves.push(at, clampf(0.006 + speed * 0.012, 0.0, 0.04), 0.055)
 	_waves.foam(at, clampf(0.05 + speed * 0.12, 0.0, 0.35), 0.045)
 
 
@@ -115,6 +144,9 @@ func flash(amount: float) -> void:
 func puffs(at: Vector3, count: int, col: Color, speed := 0.6, size := 1.0) -> void:
 	for i in maxi(3, count * 2 / 3):
 		_streamers.add(Vector3(at.x + randf_range(-0.12, 0.12), 0.03, at.z + randf_range(-0.12, 0.12)), col, clampf(speed, 0.3, 1.0), size * 1.3)
+	# and a billow of puffy smoke
+	for i in maxi(3, count / 2):
+		_clouds.add(Vector3(at.x + randf_range(-0.15, 0.15), 0.08, at.z + randf_range(-0.15, 0.15)), Color(col, 1.0), 0.35 + speed * 0.5, size * randf_range(0.9, 1.4))
 
 
 ## A burst of sparks flung up from a point (local)
@@ -154,13 +186,58 @@ func _process(dt: float) -> void:
 	_tend_floaters(dt)
 	var flick := 0.88 + 0.12 * sin(_clock * 7.3) * sin(_clock * 3.1 + 1.0)
 	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
-	_light.light_energy = look.light_energy * (0.9 + heat * 1.4) * flick * (1.0 - murk * 0.6) + _flash * 3.0
+	_light.light_energy = (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
+	_glow_light.light_color = _light.light_color
+	_glow_light.light_energy = look.light_energy * (0.5 + heat * 0.8) * (0.3 + look.glow) * flick * (1.0 - murk * 0.7) + _flash * 1.5
+	_tend_haze(dt)
+	# Now and then a puff of smoke rolls up off it, more when it's hot
+	_cloud_due += dt * look.steam * (0.15 + heat * 1.2) * (1.0 + murk)
+	while _cloud_due >= 1.0:
+		_cloud_due -= 1.0
+		var ca := randf() * TAU
+		var cr := randf_range(0.1, 0.55)
+		_clouds.add(Vector3(cos(ca) * cr, 0.06, sin(ca) * cr), Color(look.steam_colour.lerp(Color(0.25, 0.2, 0.15), murk), 1.0), randf_range(0.25, 0.4))
+	# Glowing tendrils curling up out of it, in its own colour
+	_tendril_due += dt * (0.25 + heat * 0.9) * clampf(look.glow * 1.5 + 0.2, 0.0, 1.5) * (1.0 - murk)
+	while _tendril_due >= 1.0:
+		_tendril_due -= 1.0
+		var a := randf() * TAU
+		var r := randf_range(0.2, 0.6)
+		_tendrils.add_tendril(Vector3(cos(a) * r, 0.02, sin(a) * r), Color(look.light_colour, 0.45))
 	_tend_bubbles(dt)
 	_tend_steam(dt)
 	_waves.keep = lerpf(0.988, 0.965, look.thickness)
 	_waves.speed = lerpf(0.34, 0.2, look.thickness)
 	_waves.update(dt)
 	_tend_sparks(dt)
+
+
+# --- the glow standing up off it ---
+
+func _tend_haze(dt: float) -> void:
+	var mm := _haze.multimesh
+	var strength := clampf(look.glow * 0.9 + 0.1, 0.0, 1.6) * (0.5 + heat * 0.8) * (1.0 - murk * 0.8) + _flash * 0.5
+	(_haze.material_override as ShaderMaterial).set_shader_parameter("tint", look.light_colour)
+	(_haze.material_override as ShaderMaterial).set_shader_parameter("strength", minf(strength, 1.2) * 0.3)
+	for i in _haze_cards.size():
+		var c := _haze_cards[i]
+		c.t += dt / c.life
+		if c.t >= 1.0:
+			c.t = 0.0
+			c.seed = randf()
+			c.x = randf_range(-0.25, 0.25)
+		var h: float = 2.4 + 0.6 * c.t
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(1.9, h, 1.9)), Vector3(c.x, -0.05 + c.t * 0.3, 0)))
+		mm.set_instance_custom_data(i, Color(c.seed, c.t, 0, 0))
+		mm.set_instance_color(i, Color(1, 1, 1, 1))
+
+
+## A card standing on its foot
+static func _card_foot() -> Mesh:
+	var q := QuadMesh.new()
+	q.size = Vector2(1, 1)
+	q.center_offset = Vector3(0, 0.5, 0)
+	return q
 
 
 # --- what's been put in, bobbing about till it's cooked ---
@@ -260,6 +337,15 @@ func _add_bubble(size_k := 1.0) -> void:
 		return
 	var a := randf() * TAU
 	var r := sqrt(randf()) * 0.68
+	# Half of them froth up along the iron, in clumps
+	if randf() < 0.5:
+		r = randf_range(0.66, 0.76) * pent(a)
+		if randf() < 0.6 and _b.size() < MAX_BUBBLES - 2:
+			for k in 2:
+				var a2 := a + randf_range(-0.12, 0.12)
+				var r2 := randf_range(0.64, 0.76) * pent(a2)
+				_b.append({"at": Vector2(cos(a2), sin(a2)) * r2, "size": randf_range(0.03, 0.06) * look.bubble_size * size_k,
+						"t": 0.0, "life": randf_range(0.5, 1.1) * (1.0 + look.thickness * 1.5)})
 	var thick := look.thickness
 	_b.append({"at": Vector2(cos(a), sin(a)) * r, "size": randf_range(0.035, 0.075) * look.bubble_size * size_k * (1.0 + thick * 0.8),
 			"t": 0.0, "life": randf_range(0.45, 1.0) * (1.0 + thick * 1.5)})
@@ -368,6 +454,7 @@ func _multi(name: String, mesh: Mesh, shader: Shader, count: int) -> MultiMeshIn
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
+	mm.use_custom_data = true
 	mm.mesh = mesh
 	mm.instance_count = count
 	mm.visible_instance_count = 0
@@ -384,9 +471,9 @@ func _multi(name: String, mesh: Mesh, shader: Shader, count: int) -> MultiMeshIn
 
 
 ## How far out the pot's sides are at an angle round it (local x, z), as a share of RADIUS: it's a
-## soft pentagon, a flat side to the front (as art/make_models.py makes the cauldron)
+## soft hexagon, a flat side to the front (as art/make_models.py makes the cauldron)
 static func pent(angle: float) -> float:
-	return 1.0 + 0.07 * cos(5.0 * (angle - deg_to_rad(54.0)))
+	return 1.0 + 0.06 * cos(6.0 * angle)
 
 
 ## A disc of rings for the surface, fine enough to ripple, in the pot's soft pentagon

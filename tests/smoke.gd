@@ -198,9 +198,9 @@ func _run() -> void:
 	await _seconds(1.0)
 	_check(main.hut.shutters < 0.05, "the shutters swung shut")
 	# Out of the back window to the swamp
-	await _touch(_centre("swamp_window"))
+	await _touch((main.hud.buttons["go_swamp"].rect as Rect2).get_center())
 	await _seconds(0.7)
-	_check(main.state == "swamp", "tapping the back window goes out to the swamp")
+	_check(main.state == "swamp", "the swamp button goes out to the swamp")
 	var had: int = main.stock[0]
 	await _touch(main.screen_of(main.swamp.spots["gather0"].at))
 	_check(main.stock[0] == had + 1, "a tap on the newts gathers an Eye of Newt (%d to %d)" % [had, main.stock[0]])
@@ -238,9 +238,9 @@ func _run() -> void:
 	await _touch(Vector2(360, 700))
 	await _seconds(0.7)
 	_check(main.state == "play" and main.mode == "free", "a tap brings you back in to brew another")
-	await _touch(_centre("balcony"))
+	await _touch((main.hud.buttons["go_balcony"].rect as Rect2).get_center())
 	await _seconds(0.7)
-	_check(main.state == "tower", "the balcony door goes out there too")
+	_check(main.state == "tower", "the balcony button goes out there too")
 	await _seconds(1.3)
 	await _touch(Vector2(360, 700))
 	await _seconds(0.7)

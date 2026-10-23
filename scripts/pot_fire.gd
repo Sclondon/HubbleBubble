@@ -5,21 +5,22 @@ extends Node3D
 ## (the way a particle system would do it, but just nine of them, moved here); sparks going up; and
 ## a warm light that wavers. `intensity` is how fierce it is (the bellows); the node is at its foot.
 
-const CARDS := 16
+const CARDS := 12
 
 ## 0.5 low embers, 1 a good fire, 2 roaring
 var intensity := 1.0
 var light_energy := 2.5
 ## How far out from the middle the flames are born
-var radius := 1.08
+var radius := 1.0
 ## How tall a flame is at intensity 1
-var height := 0.8
+var height := 0.7
 
 var _mm: MultiMesh
 var _mat: ShaderMaterial
 var _light: OmniLight3D
 var _cards: Array[Dictionary] = []
 var _sparks: CPUParticles3D
+var _skirt: ShaderMaterial
 var _t := 0.0
 
 
@@ -43,6 +44,14 @@ func _ready() -> void:
 	add_child(node)
 	for i in CARDS:
 		_cards.append(_born({}, randf()))
+	# The band of fire hugging the pot's belly (shaders/flame_skirt.gdshader)
+	var band := MeshInstance3D.new()
+	band.mesh = _band_mesh()
+	_skirt = ShaderMaterial.new()
+	_skirt.shader = preload("res://shaders/flame_skirt.gdshader")
+	band.material_override = _skirt
+	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(band)
 	_light = OmniLight3D.new()
 	_light.position = Vector3(0, 0.35, 1.25)
 	_light.light_color = Color(1.0, 0.58, 0.24)
@@ -79,7 +88,7 @@ func _ready() -> void:
 
 func _born(c: Dictionary, age := 0.0) -> Dictionary:
 	var a := randf() * TAU
-	var r := randf_range(0.72, 1.0) * radius
+	var r := randf_range(0.88, 1.08) * radius
 	c.at = Vector3(cos(a) * r, 0.0, sin(a) * r)
 	c.life = randf_range(0.7, 1.15)
 	c.t = age * c.life
@@ -98,12 +107,36 @@ func _process(dt: float) -> void:
 			_born(c)
 		var age: float = c.t / c.life
 		var h: float = height * c.size * (0.6 + 0.4 * k) * (0.75 + 0.35 * age)
-		var w: float = h * 0.62
+		var w: float = h * 0.85
 		var at: Vector3 = c.at + Vector3(0, age * 0.12, 0)
 		_mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(w, h, w)), at))
 		_mm.set_instance_custom_data(i, Color(c.seed, age, 0, 0))
 		_mm.set_instance_color(i, Color.WHITE)
 	_mat.set_shader_parameter("intensity", 0.85 + 0.25 * k)
+	_skirt.set_shader_parameter("clock", _t * (0.8 + 0.3 * k))
+	_skirt.set_shader_parameter("reach", clampf(0.65 + 0.3 * k, 0.5, 1.3))
 	var flick := 0.85 + 0.15 * sin(_t * 9.1) * sin(_t * 3.7 + 1.3)
 	_light.light_energy = light_energy * flick
 	_sparks.speed_scale = 0.7 + 0.4 * k
+
+
+## An open band round the pot: wide at the foot and drawing in over the belly, in the pot's soft
+## hexagon (Brew.pent), from the ash up to about the belly's widest
+static func _band_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var seg := 48
+	var rows := [[0.0, 1.0], [0.35, 1.06], [0.7, 1.09], [1.1, 1.06]]
+	for j in rows.size():
+		for i in seg + 1:
+			var a := TAU * i / seg
+			var r: float = rows[j][1] * Brew.pent(a)
+			st.set_uv(Vector2(float(i) / seg, float(j) / (rows.size() - 1)))
+			st.add_vertex(Vector3(cos(a) * r, rows[j][0], sin(a) * r))
+	for j in rows.size() - 1:
+		for i in seg:
+			var a := j * (seg + 1) + i
+			var b := a + seg + 1
+			for k: int in [a, b, a + 1, a + 1, b, b + 1]:
+				st.add_index(k)
+	return st.commit()

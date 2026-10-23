@@ -11,7 +11,7 @@ uniform vec3 core : source_color = vec3(1.0, 0.95, 0.62);
 uniform vec3 body : source_color = vec3(1.0, 0.52, 0.1);
 uniform vec3 edge : source_color = vec3(0.82, 0.16, 0.04);
 // How bright (above 1 blooms)
-uniform float hdr = 1.8;
+uniform float hdr = 1.3;
 uniform float intensity = 1.0;
 uniform float border_threshold = 0.42;
 uniform float border_smoothness = 0.1;

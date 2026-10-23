@@ -32,6 +32,8 @@ const COUNTER_HOLE := Rect2(-1.1, 1.45, 2.2, 2.15)
 const SWAMP_HOLE := Rect2(-2.4, 1.9, 0.9, 1.2)
 const DOOR_HOLE := Rect2(1.42, 0.0, 1.0, 2.75)
 const WALL_Z := -3.0
+## Where the four ingredients on the hung shelves either side of the pot stand
+const SIDE_SPOTS := [Vector3(-1.32, 2.95, -1.7), Vector3(-1.32, 2.35, -1.7), Vector3(1.32, 2.95, -1.7), Vector3(1.32, 2.35, -1.7)]
 const INGREDIENT_MODELS := ["ing_eye", "ing_shroom", "ing_wing", "ing_leg", "ing_spider", "ing_petal", "ing_pepper", "ing_scale"]
 ## One of each, as picked up and carried
 const ONE_MODELS := ["one_eye", "one_shroom", "one_wing", "one_leg", "one_spider", "one_petal", "one_pepper", "one_scale"]
@@ -78,8 +80,6 @@ func _ready() -> void:
 	_outside()
 	_room()
 	_counter()
-	_back_window()
-	_door()
 	_bits()
 	_cauldron()
 	_shelf()
@@ -225,7 +225,7 @@ func _room() -> void:
 	# The back wall of uneven stones, with its three holes, dark mortar behind
 	var wall := Shape.new()
 	var mortar := Shape.new()
-	var holes := [COUNTER_HOLE, SWAMP_HOLE, DOOR_HOLE]
+	var holes := [COUNTER_HOLE]
 	for row in 12:
 		var y := row * 0.5
 		var x := -4.6 + (0.45 if row % 2 else 0.0)
@@ -458,14 +458,6 @@ func _cauldron() -> void:
 	_pot.add_child(thermo)
 	_needle = Models.make("thermometer_needle")
 	thermo.add_child(_needle)
-	# Firewood stacked at the front left
-	var wood := Shape.new()
-	for k in 5:
-		var y := 0.1 + (k / 3) * 0.17
-		var x := -1.25 + (k % 3) * 0.2 + (0.1 if k >= 3 else 0.0)
-		wood.tube(Vector3(x, y, 0.55), Vector3(x + 0.05, y, 1.25), 0.09, 0.085, Color("7a4a2a"), Color("5a3418"), 8)
-		wood.disc(Vector3(x + 0.05, y, 1.26), Vector2(0.085, 0.085), Color("c89a6a"), 8, Basis(Vector3.RIGHT, PI * 0.5), Color("a87a4a"))
-	add_child(wood.piece("firewood"))
 
 
 ## Moonlight in through the window behind, cool, catching the customers' shoulders
@@ -473,7 +465,7 @@ func _lights() -> void:
 	var moonlight := DirectionalLight3D.new()
 	moonlight.name = "moonlight"
 	moonlight.light_color = Color(0.5, 0.55, 1.0)
-	moonlight.light_energy = 0.7
+	moonlight.light_energy = 0.9
 	moonlight.rotation = Vector3(deg_to_rad(-28), deg_to_rad(180 + 15), 0)
 	add_child(moonlight)
 	# A soft fill from where you stand, so the front of things isn't lost in the dark
@@ -481,7 +473,8 @@ func _lights() -> void:
 	fill.name = "fill"
 	fill.position = Vector3(0, 2.6, 2.4)
 	fill.light_color = Color(0.75, 0.6, 0.9)
-	fill.light_energy = 0.6
+	fill.light_energy = 0.0
+	fill.visible = false
 	fill.omni_range = 7.0
 	add_child(fill)
 
@@ -493,9 +486,22 @@ func _shelf() -> void:
 	var shelf := Models.make("shelf_arc")
 	shelf.rotation.y = PI
 	add_child(shelf)
+	# The first four along the shelf behind the pot; the other four up on little shelves hung either
+	# side of it (two on the left, two on the right)
+	var hung := Shape.new()
 	for i in 8:
-		var a := deg_to_rad(lerpf(-56.0, 56.0, i / 7.0))
-		var at := Vector3(-sin(a) * SHELF_R, SHELF_TOP, -cos(a) * SHELF_R)
+		var a := 0.0
+		var at := Vector3.ZERO
+		if i < 4:
+			a = deg_to_rad(lerpf(-38.0, 38.0, i / 3.0))
+			at = Vector3(-sin(a) * SHELF_R, SHELF_TOP, -cos(a) * SHELF_R)
+		else:
+			at = SIDE_SPOTS[i - 4]
+			a = -0.35 if at.x > 0.0 else 0.35
+			hung.box(at + Vector3(0, -0.03, 0), Vector3(0.62, 0.05, 0.36), WOOD.lightened(0.05), WOOD_D, Basis(Vector3.UP, -a))
+			for sgn: float in [-1.0, 1.0]:
+				var end := at + Basis(Vector3.UP, -a) * Vector3(sgn * 0.27, 0, 0)
+				hung.tube(end, end + Vector3(0, 2.5, 0), 0.01, 0.01, Color("c8b088"), null, 4)
 		var holder := Node3D.new()
 		holder.name = "jar%d" % i
 		holder.position = at
@@ -509,6 +515,7 @@ func _shelf() -> void:
 		holder.add_child(empty)
 		props["jar%d" % i] = holder
 		spots["jar%d" % i] = {"at": at + Vector3(0, 0.18, 0), "r": 0.26}
+	add_child(hung.piece("side_shelves"))
 	var jar := Models.make("wand_jar")
 	jar.position = Vector3(-0.95, 1.51, -2.55)
 	add_child(jar)
@@ -520,17 +527,29 @@ func _shelf() -> void:
 	_wand = wand
 	props["wand"] = jar
 	spots["wand"] = {"at": jar.position + Vector3(0, 0.3, 0), "r": 0.3}
+	# The empty jars, big and close at hand on a little shelf hung from the beams by the pot
+	var hang := Vector3(1.05, 1.8, -0.72)
+	var plank := Shape.new()
+	plank.box(hang + Vector3(0, -0.03, 0), Vector3(0.95, 0.05, 0.34), WOOD.lightened(0.05), WOOD_D, Basis(Vector3.UP, -0.5))
+	for sgn: float in [-1.0, 1.0]:
+		var end := hang + Basis(Vector3.UP, -0.5) * Vector3(sgn * 0.42, 0, 0)
+		plank.tube(end, end + Vector3(0, 3.0, 0), 0.012, 0.012, Color("c8b088"), null, 4)
+	add_child(plank.piece("bottle_shelf"))
 	var rack := Models.make("bottles")
-	rack.position = Vector3(0.95, 1.51, -2.55)
+	rack.position = hang
+	rack.rotation.y = -0.5
+	rack.scale = Vector3.ONE * 1.15
 	add_child(rack)
 	props["bottle"] = rack
-	spots["bottle"] = {"at": rack.position + Vector3(0, 0.18, 0), "r": 0.36}
+	spots["bottle"] = {"at": hang + Vector3(0, 0.25, 0), "r": 0.45}
 	_book = _floating_book()
-	_book_home = Vector3(SWAMP_HOLE.get_center().x + 0.15, 1.5, WALL_Z + 0.5)
+	# Floating by the pot on the left, in front of the shelf
+	_book_home = Vector3(-0.78, 1.95, -0.6)
+	_book.scale = Vector3.ONE * 0.95
 	_book.position = _book_home
 	add_child(_book)
 	props["book"] = _book
-	spots["book"] = {"at": _book_home, "r": 0.42}
+	spots["book"] = {"at": _book_home, "r": 0.34}
 	var bellows := Node3D.new()
 	bellows.name = "bellows"
 	bellows.position = Vector3(0.66, 0.36, 0.98)
@@ -578,6 +597,8 @@ func _floating_book() -> Node3D:
 		m.uv1_offset = Vector3(0.0 if i == 0 else 0.5, 0, 0)
 		page.material_override = m
 		page.name = "page%d" % i
+		# Drawn sharp at full size, over the soft N64 picture, so it can be read
+		page.layers = 4
 		holder.add_child(page)
 	# A little glow under it, as if it's held up by something
 	var glow := OmniLight3D.new()
@@ -805,6 +826,7 @@ func hold(which: int) -> Node3D:
 func hold_bottle() -> Node3D:
 	var b := Node3D.new()
 	b.add_child(Models.make("potion"))
+	b.scale = Vector3.ONE * 1.4
 	var liquid := Models.make("potion_liquid", Shape.mat(0.35))
 	liquid.name = "liquid"
 	liquid.scale = Vector3(1, 0.001, 1)

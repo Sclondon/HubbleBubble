@@ -10,7 +10,7 @@ extends RefCounted
 const N := 42
 const STEP := 1.0 / 50.0
 ## Heights are written to the texture over +-this many metres, slopes over +-SLOPE_RANGE
-const HEIGHT_RANGE := 0.06
+const HEIGHT_RANGE := 0.12
 const SLOPE_RANGE := 1.5
 
 var radius := 0.8

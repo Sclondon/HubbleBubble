@@ -41,6 +41,13 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
 		quit()
 		return
+	if only == "bookfloat":
+		main.hud.book_page = main.hud.book_page_of(0)
+		main.show_book_pages()
+		await _frames(60)
+		root.get_texture().get_image().save_png("%s/bookfloat.png" % out)
+		quit()
+		return
 	if only == "cook":
 		main.start_free()
 		await _frames(5)

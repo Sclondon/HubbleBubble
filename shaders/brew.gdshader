@@ -26,7 +26,7 @@ uniform float vortex = 0.0;
 uniform float clock = 0.0;
 uniform sampler2D waves : filter_linear, repeat_disable;
 // As scripts/waves.gd writes them
-uniform float height_range = 0.06;
+uniform float height_range = 0.12;
 uniform float slope_range = 1.5;
 
 varying vec2 local;
@@ -73,9 +73,9 @@ vec2 swirled(vec2 p, float amount) {
 	return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
 }
 
-// The pot's soft pentagon: how far out its side is at the angle of p, as a share of radius
+// The pot's soft hexagon: how far out its side is at the angle of p, as a share of radius
 float pent(vec2 p) {
-	return 1.0 + 0.07 * cos(5.0 * (atan(p.y, p.x) - 0.9425));
+	return 1.0 + 0.06 * cos(6.0 * atan(p.y, p.x));
 }
 
 vec4 wave_at(vec2 p) {
@@ -90,13 +90,29 @@ float dip(vec2 p) {
 	return min(vortex * vortex, 30.0) * 0.0022 * (r * r - 0.5);
 }
 
+// The swell that's always on it: three trains of waves crossing, taller and quicker with the boil,
+// slower in a thick brew. Height in x, slope in yz.
+vec3 swell(vec2 p, float t) {
+	float slow = mix(1.0, 0.45, thickness);
+	float a = 0.012 + 0.03 * boil;
+	vec2 d1 = vec2(0.96, 0.28);
+	vec2 d2 = vec2(-0.37, 0.93);
+	vec2 d3 = vec2(0.66, -0.75);
+	float p1 = dot(p, d1) * 9.0 + t * 2.1 * slow;
+	float p2 = dot(p, d2) * 13.0 - t * 2.7 * slow;
+	float p3 = dot(p, d3) * 19.0 + t * 3.4 * slow;
+	float h = a * (sin(p1) + 0.6 * sin(p2) + 0.35 * sin(p3));
+	vec2 g = a * (cos(p1) * 9.0 * d1 + 0.6 * cos(p2) * 13.0 * d2 + 0.35 * cos(p3) * 19.0 * d3);
+	return vec3(h, g);
+}
+
 void vertex() {
 	local = VERTEX.xz;
 	vec2 p = VERTEX.xz;
-	float edge = 1.0 - smoothstep(0.75, 1.0, length(p) / (radius * pent(p)));
+	float edge = 1.0 - smoothstep(0.8, 1.0, length(p) / (radius * pent(p)));
 	float slow = mix(1.0, 0.4, thickness);
-	float h = sin(p.x * 5.0 + TIME * 1.3 * slow) * sin(p.y * 4.3 - TIME * 1.1 * slow) * 0.008;
-	h += boil * (vnoise(p * 9.0 + vec2(TIME * 2.3, -TIME * 1.9) * slow) - 0.5) * 0.04;
+	float h = swell(p, clock).x;
+	h += boil * (vnoise(p * 9.0 + vec2(TIME * 2.3, -TIME * 1.9) * slow) - 0.5) * 0.05;
 	vec4 w = wave_at(p);
 	h += w.x + dip(p);
 	VERTEX.y += h * edge;
@@ -109,7 +125,7 @@ void fragment() {
 	float t = clock;
 	vec4 w = wave_at(p);
 	// The vortex's own slope: out from the middle, steeper toward the iron
-	vec2 slope = w.yz + (p / radius) * min(vortex * vortex, 30.0) * 0.0044 * 2.0 / radius;
+	vec2 slope = w.yz + swell(p, t).yz * (1.0 - smoothstep(0.8, 1.0, r)) + (p / radius) * min(vortex * vortex, 30.0) * 0.0044 * 2.0 / radius;
 	// The waves' slope bends the surface (and so the light on it)
 	vec3 n_local = normalize(vec3(-slope.x, 1.0, -slope.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(mat3(MODEL_MATRIX) * n_local, 0.0)).xyz);
@@ -143,8 +159,15 @@ void fragment() {
 	colour = mix(colour, foam, white * 0.9);
 	colour += foam * smoothstep(0.08, 0.6, steep) * 0.18;
 	colour = mix(colour, vec3(0.2, 0.15, 0.09) * (0.7 + 0.5 * n), murk);
+	// Shaded by its own slopes against a light from above and behind (so the waves always show), and
+	// a gleam on the faces of the waves turned to catch it
+	float face = dot(n_local, normalize(vec3(-0.25, 1.0, -0.55)));
+	float shade = mix(0.45, 1.35, smoothstep(0.82, 1.0, face));
+	vec3 lv = normalize((VIEW_MATRIX * vec4(normalize(vec3(-0.2, 1.0, -0.9)), 0.0)).xyz);
+	float gleam = pow(max(dot(reflect(-VIEW, NORMAL), lv), 0.0), 28.0) * (1.0 - murk) * (1.0 - white);
+	colour = colour * shade + foam * gleam * 0.55;
 	ALBEDO = colour;
-	EMISSION = mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk) + vec3(1.0, 0.95, 0.8) * flash * 0.35;
+	EMISSION = (mix(liquid, foam, white * 0.5) * (glow * (0.7 + 0.3 * n) + boil * 0.15) * (1.0 - murk)) * shade + foam * gleam * glow * 0.6 + vec3(1.0, 0.95, 0.8) * flash * 0.35;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 	vec2 g = q / 0.05;

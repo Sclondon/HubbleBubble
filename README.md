@@ -76,9 +76,10 @@ much, vaguely; `tests/lore.gd` checks every recipe in the book makes its potion.
 | `scripts/hud.gd` | The order notes, heat gauge, talk, cards, the old book; sends taps into the hut (`Shop.pick`) |
 | `scripts/album.gd` | Photographs each model once and tones it sepia for the book |
 | `scripts/hut.gd` | The hut (back wall, shutters, back window, door, the swamp night outside), shelf and what's on it (each with a spot to tap), the stick, carrying and scooping |
-| `scripts/brew.gd` | The brew: its surface (a soft pentagon, like the pot), the stirred current, what's floating and cooking, bubbles, steam streamers, sparkles, splashes (after Salmon Run 2's), its light |
+| `scripts/brew.gd` | The brew: its surface (a soft hexagon, like the low-poly pot), the stirred current, what's floating and cooking, bubbles, steam streamers, sparkles, splashes (after Salmon Run 2's), its light |
 | `scripts/waves.gd` | The brew's wave pool and its foam, worked on the CPU and handed to the surface shader as a texture |
-| `scripts/streamers.gd` | Wind Waker steam and smoke: thin winding ribbons built each frame |
+| `scripts/streamers.gd` | Wind Waker steam and smoke: thin winding ribbons built each frame (and the potion's glowing tendrils) |
+| `scripts/clouds.gd` | Puffy 3D smoke: lumpy see-through balls of scrolling noise |
 | `scripts/pot_fire.gd` | The fire under the pot (cards of `shaders/pot_fire.gdshader`, after the realtimevfx "simple fire" breakdown), sparks, light |
 | `scripts/potion_look.gd` | `PotionLook`, how a potion looks (see above) |
 | `scripts/witch.gd` | A witch on her skeleton, posed each frame (IK arms, eyes, mouth); customers' moods; drinking potions |
@@ -111,3 +112,9 @@ godot --headless --path . --export-release "Web" build/index.html
 
 For a landscape film, drop an `override.cfg` with `[display] window/size/window_width_override=1280` and
 `window_height_override=720` in the folder first, and take it out after.
+
+The smoke (streamers, tendrils and puffs) is on a render layer of its own (`Shop.SMOKE_LAYER`), drawn by a second
+camera at near full size and laid over the N64 picture, so it stays smooth while everything else is soft and
+low-res. Each potion lights the room in its own colour (two lights in `Brew`, kept off the brew's own surface) and
+stands a glow up off the pot (`shaders/haze.gdshader`). Customers talk Banjo-Kazooie style: a see-through dark box
+over their head, letters popping up one at a time.

@@ -31,6 +31,9 @@ var font_bold: FontVariation
 var book_font: Font
 var book_title_font: Font
 var note_font: FontVariation
+## What customers say is in this: a small font drawn without smoothing and blown up whole pixels at a
+## time, so it's chunky like an old console's, not crisp
+var speech_font: FontVariation
 ## The page the book is open at, and its buttons
 var book_page := 0
 var buttons_book := {}
@@ -58,6 +61,14 @@ func _ready() -> void:
 	font_bold.base_font = base
 	book_font = load("res://fonts/LibreBaskerville-Italic.ttf")
 	book_title_font = load("res://fonts/LibreBaskerville.ttf")
+	var chunky: FontFile = (load("res://fonts/Fredoka.ttf") as FontFile).duplicate()
+	chunky.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	chunky.fixed_size = 14
+	chunky.fixed_size_scale_mode = TextServer.FIXED_SIZE_SCALE_INTEGER_ONLY
+	chunky.hinting = TextServer.HINTING_NONE
+	speech_font = FontVariation.new()
+	speech_font.base_font = chunky
+	speech_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 650}
 	note_font = FontVariation.new()
 	note_font.base_font = load("res://fonts/Caveat.ttf")
 	note_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600}
@@ -116,6 +127,9 @@ func layout() -> void:
 	_tickets.clear()
 	_top = Rect2(0, 0, w, 70)
 	buttons["pause"] = {"rect": Rect2(w - 74, 8, 62, 56)}
+	# Out to the swamp and the balcony (as the back window and the door do)
+	buttons["go_swamp"] = {"rect": Rect2(w - 148, 84, 64, 64)}
+	buttons["go_balcony"] = {"rect": Rect2(w - 76, 84, 64, 64)}
 	# The orders: small notes pegged to a string across the top
 	var tw := minf(168.0, (w - 70) / 3.0) if tall else 190.0
 	for i in 3:
@@ -212,6 +226,10 @@ func _press(index: int, at: Vector2) -> void:
 			shop.select(int(id.substr(6)))
 		elif id == "pause":
 			shop.toggle_pause()
+		elif id == "go_swamp":
+			shop.visit_swamp()
+		elif id == "go_balcony":
+			shop.visit_balcony()
 		return
 	var thing := shop.pick(at)
 	# On the brew it stirs, unless the finger is right on something standing behind it
@@ -254,6 +272,7 @@ func _draw() -> void:
 			_draw_swamp()
 		_:
 			_draw_top()
+			_draw_away()
 			_draw_tickets()
 			_draw_counts()
 			_draw_speech()
@@ -348,6 +367,30 @@ func _draw_top() -> void:
 	draw_circle(Vector2(cx - 38, 30), 11, Color(0.08, 0.04, 0.12, 1.0))
 	_text("%d:%02d" % [secs / 60, secs % 60], Vector2(cx + 8, 36), 30, col, 8)
 	_button_pause(buttons.pause.rect)
+
+
+## The two buttons out of the hut, top right: the swamp (reeds by the water) and the balcony (a door
+## open on the moon). Dimmed while the shop's open (they're for when the counter's shut).
+func _draw_away() -> void:
+	var open := shop.mode == "free" and shop.state == "play"
+	for id: String in ["go_swamp", "go_balcony"]:
+		var r: Rect2 = buttons[id].rect
+		_box(r, Color("4a7a5a") if id == "go_swamp" else Color("6a5a9a"), INK, 4, 14)
+		var c := r.get_center()
+		if id == "go_swamp":
+			draw_rect(Rect2(c + Vector2(-22, 10), Vector2(44, 10)), Color("2a4a6a"))
+			for k in 4:
+				var x := -14.0 + k * 9.0
+				Icons.line(self, PackedVector2Array([c + Vector2(x, 12), c + Vector2(x + 2, -14 + (k % 2) * 6)]), 4, Color("a8e870"))
+			draw_circle(c + Vector2(-12, -14), 4, Color("8a5a2a"))
+			draw_circle(c + Vector2(13, -10), 4, Color("8a5a2a"))
+		else:
+			draw_rect(Rect2(c + Vector2(-14, -20), Vector2(28, 40)), Color("1b1450"))
+			draw_circle(c + Vector2(3, -8), 6, Color("fff2b0"))
+			draw_rect(Rect2(c + Vector2(-14, -20), Vector2(28, 40)), Color("f2c840"), false, 3.0)
+			draw_rect(Rect2(c + Vector2(-14, 8), Vector2(28, 3)), Color("8a5a2a"))
+		if not open:
+			_box(r, Color(0.05, 0.02, 0.08, 0.55), Color(0, 0, 0, 0), 0, 14, false)
 
 
 func _button_pause(r: Rect2) -> void:
@@ -446,58 +489,69 @@ func _check(c: Vector2, s: float) -> void:
 	Icons.line(self, pts, s * 0.3, GREEN)
 
 
+## What a customer's saying, the way Banjo-Kazooie did it: a rounded see-through dark box just over
+## her head (no pointer), chunky white letters with a dark edge that pop up one at a time as she
+## mumbles them, each bouncing in and bobbing gently after
 func _draw_speech() -> void:
 	var sp := shop.speech
 	if sp.is_empty():
 		return
-	var text: String = sp.text.substr(0, int(sp.shown))
-	var full: String = sp.text
-	var fs := 26 if tall else 28
-	var max_w := minf(size_now.x * 0.86, 560.0)
-	var wrapped := _wrap(full, fs, max_w - 40)
-	var lines := wrapped.split("\n")
+	var full: String = String(sp.text).to_upper()
+	var shown: float = sp.shown
+	var fs := 28
+	var f: Font = speech_font
+	var max_w := minf(size_now.x * 0.8, 500.0)
+	var lines := _wrap_with(f, full, fs, max_w - 36).split("\n")
 	var bw := 0.0
 	for ln in lines:
-		bw = maxf(bw, font_bold.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
-	var bh := lines.size() * fs * 1.12 + 28
-	bw += 40
-	var anchor: Vector2
-	if sp.who == "witch":
-		anchor = shop.screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.5, 0.6))
-	else:
-		anchor = shop.screen_of(Hut.WINDOW_HEAD + (Vector3(-0.75, 0.75, 0) if tall else Vector3(-2.1, 0.3, 0)))
-	var top_limit := (_tickets[0].end.y + 30.0) if not shop.orders.is_empty() else 84.0
-	var low_limit := size_now.y * 0.62
-	var box := Rect2(anchor + Vector2(-bw * 0.5, -bh - 40), Vector2(bw, bh))
+		bw = maxf(bw, f.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	var line_h := fs * 1.18
+	var bh := lines.size() * line_h + 26
+	bw += 36
+	var head := Hut.WINDOW_HEAD
+	var who: Variant = sp.get("customer")
+	if who != null and is_instance_valid(who):
+		head = (who as Node3D).global_position + Vector3(0, 1.75, 0.15)
+	var anchor := shop.screen_of(head + Vector3(0, 1.2, 0))
+	var box := Rect2(Vector2(anchor.x - bw * 0.5, anchor.y - bh - 6), Vector2(bw, bh))
+	var top_limit := (_tickets[0].end.y + 14.0) if not shop.orders.is_empty() and shop.mode == "shop" else 80.0
 	if shop.state == "swamp":
-		box.position.y = 140.0
-		top_limit = 0.0
-		low_limit = size_now.y
-	elif sp.who == "witch" and not tall and shop.state == "play":
-		# Your own words, in the corner by the bellows, clear of the brew
-		box.position = Vector2(size_now.x - bw - 90, size_now.y - bh - 40)
-		top_limit = 0.0
-		low_limit = size_now.y
+		top_limit = 140.0
 	box.position.x = clampf(box.position.x, 12, size_now.x - bw - 12)
-	box.position.y = clampf(box.position.y, top_limit, low_limit - bh)
-	var tail_to := Vector2(clampf(anchor.x, box.position.x + 30, box.end.x - 30), box.end.y + 30)
-	var tail_from := Vector2(clampf(anchor.x, box.position.x + 40, box.end.x - 60), box.end.y - 4)
-	var tail := PackedVector2Array([tail_from, tail_from + Vector2(34, 0), tail_to])
-	var fill := Color("fffaf0") if sp.who == "witch" else Color("e8f4ff")
-	Icons.blob(self, tail, fill, 5)
-	_box(box, fill, INK, 5, 24)
-	draw_colored_polygon(PackedVector2Array([tail_from + Vector2(4, -6), tail_from + Vector2(30, -6), tail_from + Vector2(17, 6)]), fill)
-	# Typed out a letter at a time, laid out where the whole text will end up
-	var shown_lines := _wrap(full, fs, max_w - 40).split("\n")
-	var left := text.length()
-	var y := box.position.y + 14 + fs * 0.5
-	for ln in shown_lines:
-		var part := ln.substr(0, maxi(0, left))
-		left -= ln.length() + 1
-		_text(part, Vector2(box.position.x + 20, y), fs, Color("3a1a4a") if sp.who == "witch" else Color("1a2a4a"), 0, HORIZONTAL_ALIGNMENT_LEFT)
-		y += fs * 1.12
-	if sp.who == "witch":
-		_text("You (Grumblewart)", Vector2(box.position.x + 18, box.position.y - 2), 20, Color("a8e870"), 6, HORIZONTAL_ALIGNMENT_LEFT)
+	# Wide, it keeps up over her head and steps right of the notes instead
+	if not tall:
+		top_limit = 80.0
+		if not shop.orders.is_empty() and shop.mode == "shop" and box.position.y < _tickets[0].end.y + 10.0:
+			box.position.x = minf(maxf(box.position.x, _tickets[2].end.x + 16.0), size_now.x - bw - 160.0)
+	box.position.y = clampf(box.position.y, top_limit, size_now.y - bh - 12)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.02, 0.07, 0.62)
+	sb.set_corner_radius_all(int(minf(26.0, bh * 0.5)))
+	sb.anti_aliasing = true
+	draw_style_box(sb, box)
+	# Letters one at a time, laid out where the whole line will end up
+	var k := 0
+	var y := box.position.y + 13 + fs * 0.5
+	for ln in lines:
+		var x := box.position.x + (bw - f.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x) * 0.5
+		for i in ln.length():
+			if float(k) >= shown:
+				return
+			var ch := ln[i]
+			var cw := f.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			var age := shown - float(k)
+			# Pops up as it's said, then bobs a little
+			var pop := maxf(0.0, 1.0 - age / 4.0)
+			var at := Vector2(x, y + fs * 0.36 - sin(pop * PI) * fs * 0.35 + sin(_t * 5.0 + k * 0.6) * 1.2)
+			var size := fs if pop < 0.5 else fs * 2 - 14
+			# A very soft shadow behind it, no outline
+			for o: Vector2 in [Vector2(1, 2), Vector2(2, 3), Vector2(3, 4)]:
+				draw_string(f, at + o, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.14))
+			draw_string(f, at, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color("fff8e8"))
+			x += cw
+			k += 1
+		k += 1
+		y += line_h
 
 
 func _draw_floaters() -> void:
@@ -881,6 +935,24 @@ func _draw_open_book() -> void:
 	var pages := _book_pages()
 	var left := clampi(page_shown, 0, pages.size() - 1)
 	var w := size_now.x * 0.5
+	# A recipe, written large so it can be read from the cauldron: the name and its picture on the
+	# left, the steps on the right
+	if pages[left].kind == "potion":
+		var pot: Dictionary = Book.POTIONS[pages[left].potion]
+		var lr := Rect2(6, 6, w - 9, size_now.y - 12)
+		var rr := Rect2(w + 3, 6, w - 9, size_now.y - 12)
+		_paper(lr)
+		_paper(rr)
+		var steps := Book.steps_of(pot.recipe)
+		_ink(_wrap_book(pot.name, 46, lr.size.x - 60), Vector2(lr.get_center().x, lr.position.y + 110), 46, HORIZONTAL_ALIGNMENT_CENTER, true)
+		_picture(Hut.INGREDIENT_MODELS[steps[0].what], Vector2(lr.get_center().x, lr.position.y + 450), 380)
+		var row := minf(150.0, (rr.size.y - 30) / steps.size())
+		var y := rr.position.y + 20 + row * 0.5
+		for st: Dictionary in steps:
+			_step_picture(st, Vector2(rr.position.x + row * 0.5 + 10, y), row * 0.9)
+			_ink(_wrap_book(Book.old_words(st), 50, rr.size.x - row - 30), Vector2(rr.position.x + row + 14, y), 50, HORIZONTAL_ALIGNMENT_LEFT, true)
+			y += row
+		return
 	_old_page(Rect2(6, 6, w - 9, size_now.y - 12), pages[left], left)
 	if left + 1 < pages.size():
 		_old_page(Rect2(w + 3, 6, w - 9, size_now.y - 12), pages[left + 1], left + 1)
