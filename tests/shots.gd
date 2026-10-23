@@ -49,6 +49,20 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
 		quit()
 		return
+	if only == "rings":
+		main.start_free()
+		await _frames(20)
+		main.camera.position = Vector3(0.0, 2.35, 1.35)
+		main.camera.look_at(Vector3(0, Hut.BREW_LEVEL, 0))
+		main.set_process(false)
+		main.smoke_camera.global_transform = main.camera.global_transform
+		for k in 3:
+			main.hut.brew.droplets(Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)), 8, 1.2)
+			await _frames(12)
+		await _frames(20)
+		root.get_texture().get_image().save_png("%s/rings.png" % out)
+		quit()
+		return
 	if only == "dev":
 		main.start_free()
 		await _frames(5)

@@ -62,6 +62,8 @@ var _splashes: Array[Splash] = []
 var _drops: MultiMeshInstance3D
 var _drop_list: Array[Dictionary] = []
 var _drop_bubbles: MultiMeshInstance3D
+var _ring_fx: MultiMeshInstance3D
+var _ring_list: Array[Dictionary] = []
 var _next_splash := 0
 
 
@@ -177,6 +179,11 @@ func _ready() -> void:
 	_drops.custom_aabb = AABB(Vector3(-3, -2, -3), Vector3(6, 6, 6))
 	add_child(_drops)
 	_drop_bubbles = _multi("drop_bubbles", _dome(), preload("res://shaders/bubble.gdshader"), 24)
+	# Little ring waves where drops land back in (flat cards on the surface)
+	var flat_card := QuadMesh.new()
+	flat_card.size = Vector2(1, 1)
+	flat_card.orientation = PlaneMesh.FACE_Y
+	_ring_fx = _multi("drop_rings", flat_card, preload("res://shaders/drop_ring.gdshader"), 40)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
 	for i in 3:
@@ -255,7 +262,33 @@ func droplets(at: Vector3, count: int, speed := 1.2) -> void:
 		_drop_list.append({"at": Vector3(at.x, 0.02, at.z), "vel": dir * go, "col": c, "size": size, "kind": kind, "t": 0.0, "spin": randf() * TAU})
 
 
+## A little ring wave spreading out from a point on the surface (local x, z), as big as the drop was
+func ring_at(at: Vector2, size: float) -> void:
+	if _ring_list.size() >= 40:
+		_ring_list.remove_at(0)
+	_ring_list.append({"at": at, "size": clampf(size * 9.0, 0.08, 0.22), "t": 0.0, "life": randf_range(0.7, 1.0)})
+
+
+func _tend_rings(dt: float) -> void:
+	var mm := _ring_fx.multimesh
+	var shown := 0
+	for i in range(_ring_list.size() - 1, -1, -1):
+		_ring_list[i].t += dt
+		if _ring_list[i].t >= _ring_list[i].life:
+			_ring_list.remove_at(i)
+	var col := look.foam.lerp(Color.WHITE, 0.5)
+	for r in _ring_list:
+		var k: float = r.t / r.life
+		var at: Vector2 = r.at
+		var sz: float = r.size * (0.6 + 1.4 * k)
+		mm.set_instance_transform(shown, Transform3D(Basis().scaled(Vector3(sz, 1, sz)), Vector3(at.x, surface_at(at) + 0.012, at.y)))
+		mm.set_instance_color(shown, Color(col, 1.0 - k))
+		shown += 1
+	mm.visible_instance_count = shown
+
+
 func _tend_drops(dt: float) -> void:
+	_tend_rings(dt)
 	var mm := _drops.multimesh
 	var bm := _drop_bubbles.multimesh
 	var shown := 0
@@ -273,6 +306,7 @@ func _tend_drops(dt: float) -> void:
 		if d.vel.y < 0.0 and d.at.y <= 0.0 and flat.length() < RADIUS * 0.95:
 			# back in: a little ring as big as it was (foam leaves a fleck)
 			ripple(flat, clampf(d.size * 14.0, 0.15, 0.5))
+			ring_at(flat, d.size)
 			if d.kind == "foam":
 				_waves.foam(flat, 0.4, 0.04)
 			_drop_list.remove_at(i)
@@ -740,6 +774,7 @@ func _tend_bubbles(dt: float) -> void:
 			# Pop: a ring, and now and then a drop or two
 			ripple(b.at, clampf(b.size * 6.0, 0.15, 0.8))
 			_waves.foam(b.at, 0.2, b.size)
+			ring_at(b.at, b.size * 0.6)
 			if randf() < 0.3:
 				sparks(Vector3(b.at.x, 0, b.at.y), 2, look.bubble_colour, 0.8)
 			_b.remove_at(i)
