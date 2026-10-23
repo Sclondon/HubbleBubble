@@ -317,10 +317,48 @@ static func _card_foot() -> Mesh:
 func float_in(model: String, at: Vector3) -> void:
 	var node := Models.make(model)
 	add_child(node)
+	node.scale = Vector3.ONE * 1.3
 	var p := Vector2(at.x, at.z).limit_length(0.55)
-	_floaters.append({"node": node, "at": p, "vel": Vector2(randf_range(-0.2, 0.2), randf_range(-0.2, 0.2)),
-			"phase": randf() * TAU, "spin": randf_range(-1.0, 1.0), "sink": 0.12, "gone": -1.0})
-	node.position = Vector3(p.x, -0.12, p.y)
+	# A body that floats: where it is and how it's going, which way up it is and how it's turning, and
+	# the points on it the brew pushes up on (round its middle, a little apart, so it tips and rolls)
+	var box := _bounds(node)
+	var size := box.size
+	# (the model is moved so the middle of it is its centre: it turns about that)
+	for c in node.get_children():
+		if c is Node3D:
+			(c as Node3D).position -= box.get_center() / node.scale
+	var pts: Array[Vector3] = []
+	for k in 8:
+		pts.append(Vector3((-0.45 if k & 1 else 0.45) * size.x, (-0.45 if k & 2 else 0.45) * size.y, (-0.45 if k & 4 else 0.45) * size.z))
+	_floaters.append({"node": node, "at": p, "pos": Vector3(p.x, 0.05, p.y), "vel": Vector3(randf_range(-0.2, 0.2), -1.2, randf_range(-0.2, 0.2)),
+			"rot": Basis(Vector3(randf(), randf(), randf()).normalized(), randf_range(0.0, PI)), "spin": Vector3(randf_range(-6, 6), randf_range(-3, 3), randf_range(-6, 6)),
+			"pts": pts, "size": maxf(size.x, maxf(size.y, size.z)), "phase": randf() * TAU, "gone": -1.0})
+	node.position = Vector3(p.x, 0.05, p.y)
+
+
+## Where a model is (its bounds in the model's own space, as it will be drawn)
+static func _bounds(node: Node3D) -> AABB:
+	var box := AABB()
+	var first := true
+	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		var b := node.global_transform.affine_inverse() * mi.global_transform * mi.get_aabb() if node.is_inside_tree() else mi.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	box.position *= node.scale
+	box.size = (box.size * node.scale).max(Vector3.ONE * 0.04)
+	return box
+
+
+## How high the brew stands at a point (local x, z): its waves, its swell and its stirred dip, as the
+## surface shader moves it
+func surface_at(p: Vector2) -> float:
+	var slow := lerpf(1.0, 0.45, look.thickness)
+	var boil := clampf(heat * 1.3 - 0.2, 0.0, 1.0)
+	var a := 0.02 + 0.045 * boil
+	var t := _clock
+	var h := a * (sin(p.dot(Vector2(0.96, 0.28)) * 9.0 + t * 2.1 * slow) + 0.6 * sin(p.dot(Vector2(-0.37, 0.93)) * 13.0 - t * 2.7 * slow) + 0.35 * sin(p.dot(Vector2(0.66, -0.75)) * 19.0 + t * 3.4 * slow))
+	var rr := p.length() / RADIUS
+	return h + _waves.height_at(p) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5)
 
 
 ## How many things are bobbing in it
@@ -388,36 +426,77 @@ func _tend_floaters(dt: float) -> void:
 				node.queue_free()
 				_floaters.remove_at(i)
 			continue
-		var p: Vector2 = f.at
-		var r := p.length()
-		# Carried round by the current, wandering, kept off the iron and off one another
-		var round_v := Vector2(-p.y, p.x) * current * 0.9
-		var push := Vector2.ZERO
-		if r > 0.5:
-			push -= p.normalized() * (r - 0.5) * 6.0
-		for g in _floaters:
-			if g != f and g.gone < 0.0:
-				var d: Vector2 = p - g.at
-				var dl := d.length()
-				if dl < 0.16 and dl > 0.0001:
-					push += d / dl * (0.16 - dl) * 8.0
-		f.vel = (f.vel + (push + Vector2(sin(t * 0.7 + f.phase), cos(t * 0.6 + f.phase * 1.3)) * 0.05) * dt) * (1.0 - dt * 1.5)
-		f.at = (p + (f.vel + round_v) * dt).limit_length(0.6)
-		f.sink = move_toward(f.sink, 0.0, dt * 0.5)
-		# Bobbing on the waves (riding the vortex's dip), jiggling, and jiggling hard while it cooks
-		var rr: float = f.at.length() / RADIUS
-		var y: float = _waves.height_at(f.at) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5) - f.sink
-		var jig := 0.12 + 0.1 * heat + shake * 0.45
-		var hop := shake * absf(sin(t * 19.0 + f.phase)) * 0.07
-		node.position = Vector3(f.at.x, y - 0.1 + sin(t * 2.6 + f.phase) * 0.012 + hop, f.at.y)
+		_float_body(f, dt, shake)
+		var node_s := 1.0 + shake * 0.15 * sin(t * 24.0 + f.phase)
+		node.scale = Vector3(1.0 / sqrt(node_s), node_s, 1.0 / sqrt(node_s)) * 1.3
 		if randf() < dt * 4.0:
 			_waves.foam(f.at, 0.25, 0.06)
-		node.rotation = Vector3(sin(t * 7.0 + f.phase) * jig, node.rotation.y + dt * (f.spin + current * 0.6), sin(t * 6.1 + f.phase * 2.0) * jig)
-		var sq := 1.0 + shake * 0.18 * sin(t * 24.0 + f.phase)
-		node.scale = Vector3(1.0 / sqrt(sq), sq, 1.0 / sqrt(sq)) * 1.3
-		# Bobbing, they set little rings going
 		if randf() < dt * (1.0 + shake * 6.0):
 			_waves.push(f.at, 0.0015 + shake * 0.0015, 0.05)
+
+
+## One floating body stepped on: gravity down; at each of its points under the surface, the brew
+## pushes up (more the deeper it is) and drags; the push off-centre tips it over, so it rolls and
+## tumbles on the waves. The current carries it round, the iron and the others push it off.
+func _float_body(f: Dictionary, dt: float, shake: float) -> void:
+	var steps := 3
+	var h := dt / steps
+	for step in steps:
+		var pos: Vector3 = f.pos
+		var vel: Vector3 = f.vel
+		var rot: Basis = f.rot
+		var spin: Vector3 = f.spin
+		var force := Vector3(0, -9.8, 0)
+		var torque := Vector3.ZERO
+		var pts: Array = f.pts
+		var under := 0
+		for lp: Vector3 in pts:
+			var arm := rot * lp
+			var wp := pos + arm
+			var depth := surface_at(Vector2(wp.x, wp.z)) - wp.y
+			if depth > 0.0:
+				under += 1
+				var point_vel := vel + spin.cross(arm)
+				var push := Vector3(0, minf(depth, 0.1) * 300.0 / pts.size() * 2.0, 0) - point_vel * (6.0 / pts.size())
+				force += push
+				torque += arm.cross(push)
+		# The current carries it round; stirred, it tumbles more
+		var flat := Vector2(pos.x, pos.z)
+		var round_v := Vector3(-flat.y, 0, flat.x) * current * 0.9
+		if under > 0:
+			force += (round_v - Vector3(vel.x, 0, vel.z)) * 2.5
+		# Off the iron and the others
+		var r := flat.length()
+		var wall := 0.6 * pent(flat.angle())
+		if r > wall:
+			force -= Vector3(flat.x, 0, flat.y).normalized() * (r - wall) * 60.0
+		for g in _floaters:
+			if g != f and g.gone < 0.0:
+				var d: Vector3 = pos - g.pos
+				d.y *= 0.5
+				var dl := d.length()
+				var gap: float = (f.size + g.size) * 0.4
+				if dl < gap and dl > 0.0001:
+					force += d / dl * (gap - dl) * 80.0
+		# Cooking: kicked about
+		if shake > 0.0 and randf() < h * 8.0:
+			vel += Vector3(randf_range(-0.3, 0.3), randf_range(0.4, 0.9), randf_range(-0.3, 0.3))
+			spin += Vector3(randf_range(-10, 10), randf_range(-5, 5), randf_range(-10, 10))
+		vel += force * h
+		vel *= 1.0 - h * 0.4
+		spin += torque * 900.0 * h / maxf(f.size * f.size * 40.0, 0.2) / 40.0
+		spin *= 1.0 - h * (2.0 if under > 0 else 0.3)
+		pos += vel * h
+		if spin.length() > 0.0001:
+			rot = Basis(spin.normalized(), spin.length() * h) * rot
+		f.pos = pos
+		f.vel = vel
+		f.rot = rot.orthonormalized()
+		f.spin = spin
+	f.at = Vector2(f.pos.x, f.pos.z)
+	var node: Node3D = f.node
+	node.position = f.pos
+	node.basis = f.rot
 
 
 # --- bubbles: swell, then burst into a ring ---

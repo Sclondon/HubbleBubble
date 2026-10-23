@@ -552,7 +552,7 @@ func _shelf() -> void:
 	_book = _floating_book()
 	# Floating low by the pot on the front left, clear of the shelves
 	_book_home = Vector3(-0.72, 1.0, 1.3)
-	_book_scale = 0.48
+	_book_scale = 0.4
 	_book.position = _book_home
 	add_child(_book)
 	props["book"] = _book

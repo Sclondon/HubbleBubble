@@ -11,7 +11,7 @@ const CARDS := 12
 var intensity := 1.0
 var light_energy := 2.5
 ## How far out from the middle the flames are born
-var radius := 1.0
+var radius := 0.75
 ## How tall a flame is at intensity 1
 var height := 0.7
 
@@ -20,7 +20,7 @@ var _mat: ShaderMaterial
 var _light: OmniLight3D
 var _cards: Array[Dictionary] = []
 var _sparks: CPUParticles3D
-var _skirt: ShaderMaterial
+var _skirts: Array[ShaderMaterial] = []
 var _t := 0.0
 
 
@@ -44,14 +44,20 @@ func _ready() -> void:
 	add_child(node)
 	for i in CARDS:
 		_cards.append(_born({}, randf()))
-	# The band of fire hugging the pot's belly (shaders/flame_skirt.gdshader)
-	var band := MeshInstance3D.new()
-	band.mesh = _band_mesh()
-	_skirt = ShaderMaterial.new()
-	_skirt.shader = preload("res://shaders/flame_skirt.gdshader")
-	band.material_override = _skirt
-	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(band)
+	# Rings of fire round the pot's belly (shaders/flame_skirt.gdshader), one inside another: the
+	# inner tall, the outer lower, each flickering on its own
+	var mesh := _band_mesh()
+	for spec: Array in [[0.82, 1.0, 0.0], [1.0, 0.75, 3.7], [1.16, 0.5, 8.1]]:
+		var band := MeshInstance3D.new()
+		band.mesh = mesh
+		band.scale = Vector3(spec[0], spec[1], spec[0])
+		var m := ShaderMaterial.new()
+		m.shader = preload("res://shaders/flame_skirt.gdshader")
+		m.set_shader_parameter("seed", spec[2])
+		band.material_override = m
+		band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(band)
+		_skirts.append(m)
 	_light = OmniLight3D.new()
 	_light.position = Vector3(0, 0.35, 1.25)
 	_light.light_color = Color(1.0, 0.58, 0.24)
@@ -113,8 +119,9 @@ func _process(dt: float) -> void:
 		_mm.set_instance_custom_data(i, Color(c.seed, age, 0, 0))
 		_mm.set_instance_color(i, Color.WHITE)
 	_mat.set_shader_parameter("intensity", 0.85 + 0.25 * k)
-	_skirt.set_shader_parameter("clock", _t * (0.8 + 0.3 * k))
-	_skirt.set_shader_parameter("reach", clampf(0.65 + 0.3 * k, 0.5, 1.3))
+	for m in _skirts:
+		m.set_shader_parameter("clock", _t * (0.8 + 0.3 * k))
+		m.set_shader_parameter("reach", clampf(0.65 + 0.3 * k, 0.5, 1.3))
 	var flick := 0.85 + 0.15 * sin(_t * 9.1) * sin(_t * 3.7 + 1.3)
 	_light.light_energy = light_energy * flick
 	_sparks.speed_scale = 0.7 + 0.4 * k
@@ -126,7 +133,7 @@ static func _band_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var seg := 48
-	var rows := [[0.0, 1.0], [0.35, 1.06], [0.7, 1.09], [1.1, 1.06]]
+	var rows := [[0.0, 0.62], [0.3, 0.82], [0.6, 0.98], [1.0, 1.04]]
 	for j in rows.size():
 		for i in seg + 1:
 			var a := TAU * i / seg

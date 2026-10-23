@@ -99,7 +99,7 @@ float dip(vec2 p) {
 // slower in a thick brew. Height in x, slope in yz.
 vec3 swell(vec2 p, float t) {
 	float slow = mix(1.0, 0.45, thickness);
-	float a = 0.012 + 0.03 * boil;
+	float a = 0.02 + 0.045 * boil;
 	vec2 d1 = vec2(0.96, 0.28);
 	vec2 d2 = vec2(-0.37, 0.93);
 	vec2 d3 = vec2(0.66, -0.75);
@@ -114,7 +114,7 @@ vec3 swell(vec2 p, float t) {
 void vertex() {
 	local = VERTEX.xz;
 	vec2 p = VERTEX.xz;
-	float edge = 1.0 - smoothstep(0.8, 1.0, length(p) / (radius * pent(p)));
+	float edge = 1.0;
 	float slow = mix(1.0, 0.4, thickness);
 	float h = swell(p, clock).x;
 	h += boil * (vnoise(p * 9.0 + vec2(TIME * 2.3, -TIME * 1.9) * slow) - 0.5) * 0.05;

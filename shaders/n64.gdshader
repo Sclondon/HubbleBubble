@@ -7,7 +7,7 @@ shader_type canvas_item;
 uniform float amount = 1.0;
 uniform vec2 size = vec2(270.0, 480.0);
 // How far the smear reaches, in pixels of the small picture
-uniform float soft = 0.75;
+uniform float soft = 0.3;
 
 const float BAYER[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
 

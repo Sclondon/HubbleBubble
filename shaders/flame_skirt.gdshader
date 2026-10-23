@@ -14,6 +14,8 @@ uniform float hdr = 1.25;
 // How high the tongues reach (0 to 1 of the band), from the bellows
 uniform float reach = 0.6;
 uniform float clock = 0.0;
+// (each ring its own flames)
+uniform float seed = 0.0;
 
 float hash(vec2 p) {
 	ivec2 c = ivec2(round(p));
@@ -42,10 +44,10 @@ float fbm(vec2 p, float period) {
 }
 
 void fragment() {
-	float t = clock;
+	float t = clock + seed;
 	vec2 uv = UV;
 	float y = uv.y;
-	float around = uv.x * 24.0;
+	float around = uv.x * 24.0 + floor(seed * 3.0);
 	// Pushed sideways, more toward the top
 	float push = (vnoise(vec2(around * 0.5, y * 3.0 - t * 1.4), 12.0) - 0.5) * 1.6 * y;
 	float a = fbm(vec2(around + push, y * 4.0 - t * 3.2), 24.0);

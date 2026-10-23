@@ -134,7 +134,9 @@ func _step() -> void:
 				p[k] = 0.0
 				continue
 			var hk := h[k]
-			var around := h[k - 1] + h[k + 1] + h[k - N] + h[k + N]
+			# (a neighbour outside the pot counts as this cell: the wave bounces off the iron
+			# with its height, rather than being held flat there)
+			var around := (h[k - 1] if _inside[k - 1] else hk) + (h[k + 1] if _inside[k + 1] else hk) + (h[k - N] if _inside[k - N] else hk) + (h[k + N] if _inside[k + N] else hk)
 			p[k] = (2.0 * hk - p[k] + c * (around - 4.0 * hk)) * keep
 			f[k] *= fk
 	# The new heights were written over the old-old ones: swap

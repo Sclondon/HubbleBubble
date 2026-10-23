@@ -12,7 +12,7 @@ const BOIL_TIME := 1.2
 const KEY_STIR_SPEED := TAU * 1.4
 ## The most things a pot holds before it's too full
 const MAX_STEPS := 8
-const N64_LINES := 228.0
+const N64_LINES := 260.0
 ## The render layer smoke is on: drawn sharp at near full size over the soft N64 picture
 const SMOKE_LAYER := 4
 
@@ -626,9 +626,9 @@ func _process(dt: float) -> void:
 	smoke_camera.global_transform = camera.global_transform
 	smoke_camera.fov = camera.fov
 	smoke_camera.keep_aspect = camera.keep_aspect
-	# The floating book keeps to the lower left of the view, whatever its shape
+	# The floating book keeps up on the left of the view beside the pot, whatever its shape
 	if state == "play" or state == "intro":
-		hut._book_home = camera.project_position(Vector2(view.size) * Vector2(0.2, 0.8), 2.3)
+		hut._book_home = camera.project_position(Vector2(view.size) * Vector2(0.15, 0.42), 2.6)
 	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
 		show_book_pages()
 	_update_speech(dt)
