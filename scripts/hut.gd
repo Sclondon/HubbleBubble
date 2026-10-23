@@ -126,7 +126,7 @@ func _process(dt: float) -> void:
 	# The fire leaps with the heat (and flares when something fiery goes in)
 	var h := heat / 100.0
 	_flare = maxf(0.0, _flare - dt * 1.5)
-	fire.intensity = 0.6 + h * 1.3 + _flare * 0.6
+	fire.intensity = 0.6 + h * 0.9 + _flare * 0.4
 	fire.light_energy = 2.0 + h * 3.5 + _flare * 2.0
 	brew.heat = h
 	# The pages take the potion's light (lit by it, as everything is, but always readable)
@@ -432,6 +432,12 @@ func _cauldron() -> void:
 	_tap_handle.rotation.y = 0.35
 	_pot.add_child(_tap_handle)
 	spots["tap"] = {"at": Vector3.ZERO, "r": 0.2}
+	# The wire the order notes are clipped to, strung across the hut over the counter on two hooks
+	var wire := Shape.new()
+	for x: float in [-1.55, 1.55]:
+		wire.tube(Vector3(x, 3.62, -1.75), Vector3(x, 4.5, -1.75), 0.018, 0.018, Color("5a5a6a"), null, 5)
+		wire.ball(Vector3(x, 3.62, -1.75), Vector3(0.04, 0.04, 0.04), Color("8a8a9a"), null, 6, 4)
+	add_child(wire.piece("ticket_wire"))
 	# The cold-water pipe, out of the wall on the right and in over the rim, a valve wheel on it
 	var pipe := Shape.new()
 	var brass := Color("b87a22")
@@ -441,7 +447,7 @@ func _cauldron() -> void:
 	for x: float in [1.8, 2.4]:
 		pipe.box(Vector3(x, 1.66, 0.25), Vector3(0.05, 0.16, 0.16), Color("6b5a4a"), Color("4a3a2a"))
 	# (a little shine of its own, so the brass shows in the dark)
-	add_child(pipe.piece("water_pipe", Shape.mat(0.6)))
+	add_child(pipe.piece("water_pipe"))
 	_valve = Node3D.new()
 	_valve.position = WATER_VALVE + Vector3(0, 0.12, 0)
 	add_child(_valve)
@@ -451,7 +457,7 @@ func _cauldron() -> void:
 		var a := k * PI * 0.25
 		wheel.tube(Vector3(cos(a), 0, sin(a)) * -0.11, Vector3(cos(a), 0, sin(a)) * 0.11, 0.012, 0.012, Color("d84a3a"), null, 5)
 	wheel.tube(Vector3(0, -0.12, 0), Vector3.ZERO, 0.02, 0.02, brass, null, 6)
-	_valve.add_child(wheel.piece("valve_wheel", Shape.mat(0.7)))
+	_valve.add_child(wheel.piece("valve_wheel"))
 	spots["water"] = {"at": WATER_VALVE + Vector3(0, 0.1, 0), "r": 0.22}
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
 	# (a faint glow of its own, so the dial reads even in the rim's shadow)
@@ -663,7 +669,7 @@ func _shelf() -> void:
 	_book = _floating_book()
 	# Floating low by the pot on the front left, clear of the shelves
 	_book_home = Vector3(-0.72, 1.0, 1.3)
-	_book_scale = 0.4
+	_book_scale = 0.55
 	_book.position = _book_home
 	add_child(_book)
 	props["book"] = _book

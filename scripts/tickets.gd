@@ -1,9 +1,8 @@
 class_name Tickets
 extends Node3D
-## The orders as real notes in the hut: little sheets of paper pegged to a string strung across the
-## room just in front of you (where the tickets always were on the screen), each with the potion's
-## name scrawled on it, swinging a little, scorching brown as the customer loses patience. Drawn sharp
-## on the smoke layer (Shop.SMOKE_LAYER) so the scrawl reads. Shop.update_tickets() places them.
+## The orders as real notes in the hut: little sheets of paper clipped to a wire hung across the room
+## over the counter, each with the potion's name scrawled on it, swinging a little, scorching brown as
+## the customer loses patience, lit by the potion like everything else. Shop.update_tickets() places them.
 
 var _notes: Array[Node3D] = []
 var _papers: Array[StandardMaterial3D] = []
@@ -29,7 +28,6 @@ func _ready() -> void:
 		m.albedo_color = Color("e8dab4")
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		paper.material_override = m
-		paper.layers = 4
 		note.add_child(paper)
 		var peg := MeshInstance3D.new()
 		var pb := BoxMesh.new()
@@ -40,7 +38,6 @@ func _ready() -> void:
 		pm.albedo_color = Color("6b3e22")
 		peg.material_override = pm
 		peg.position = Vector3(0, -0.02, 0.01)
-		peg.layers = 4
 		note.add_child(peg)
 		var label := Label3D.new()
 		label.font = _font
@@ -53,23 +50,22 @@ func _ready() -> void:
 		label.position = Vector3(0, -0.33, 0.01)
 		label.shaded = false
 		label.double_sided = false
-		label.layers = 4
 		note.add_child(label)
 		_notes.append(note)
 		_papers.append(m)
 		_labels.append(label)
 	_string = MeshInstance3D.new()
 	var sm := CylinderMesh.new()
-	sm.top_radius = 0.008
-	sm.bottom_radius = 0.008
+	sm.top_radius = 0.012
+	sm.bottom_radius = 0.012
 	sm.height = 1.0
 	sm.radial_segments = 4
 	_string.mesh = sm
 	var stm := StandardMaterial3D.new()
-	stm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	stm.albedo_color = Color("c8a878")
+	stm.albedo_color = Color("8a8a9a")
+	stm.metallic = 0.6
+	stm.roughness = 0.4
 	_string.material_override = stm
-	_string.layers = 4
 	add_child(_string)
 
 

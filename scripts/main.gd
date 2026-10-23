@@ -303,21 +303,29 @@ func _atmosphere() -> Environment:
 	return e
 
 
-## The order notes, pegged on their string just in front of you where the tickets are on the screen
+## The order notes, clipped to their wire across the hut
+const TICKET_WIRE := Vector3(0, 3.62, -1.75)
+
+
 func update_tickets() -> void:
 	var list := []
 	if mode == "shop" and state in ["play", "intro"]:
 		for i in mini(orders.size(), 3):
 			var o: Dictionary = orders[i]
 			list.append({"name": Book.POTIONS[o.potion].name, "frac": clampf(o.patience / o.full, 0.0, 1.0), "selected": i == selected})
+	# They hang on the wire strung across the hut over the counter; where they fall on the screen is
+	# where they're tapped
 	var spots := []
-	var k := Vector2(view.size) / get_viewport().get_visible_rect().size
 	for i in 3:
-		var r: Rect2 = hud._tickets[i] if hud != null and i < hud._tickets.size() else Rect2(0, 0, 10, 10)
-		var top := camera.project_position(Vector2(r.get_center().x, r.position.y - 6) * k, 1.6)
-		var left := camera.project_position(Vector2(r.position.x, r.position.y) * k, 1.6)
-		var right := camera.project_position(Vector2(r.end.x, r.position.y) * k, 1.6)
-		spots.append([top, left.distance_to(right)])
+		var top := Vector3(-1.0 + i * 1.0, TICKET_WIRE.y - 0.02, TICKET_WIRE.z)
+		var wide := 0.78
+		spots.append([top, wide])
+		if hud != null and i < hud._tickets.size():
+			var a2 := screen_of(top - camera.global_basis.x * wide * 0.5)
+			var b2 := screen_of(top + camera.global_basis.x * wide * 0.5 - camera.global_basis.y * wide * 0.62)
+			var r := Rect2(a2, b2 - a2).abs()
+			hud._tickets[i] = r
+			hud.buttons["ticket%d" % i] = {"rect": r}
 	var light := Color.WHITE.lerp(hut.brew.look.light_colour, 0.3) * (0.7 + 0.3 * hut.brew.light_now())
 	tickets.show_orders(spots, list, camera.global_basis, light, _boot_t)
 

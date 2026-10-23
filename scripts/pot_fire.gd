@@ -124,20 +124,32 @@ func blow(from: Vector3) -> void:
 	d.y = 0.0
 	_blow_dir = global_basis.inverse() * (d.normalized() if d.length() > 0.01 else Vector3.BACK)
 	_blow = 1.0
-	for i in 10:
+	for i in 3:
 		_add_spark(true)
-	for i in 8:
+	for i in 3:
 		_add_ember(true)
 
 
+## Where flames are born: most round the front of the pot (toward you), so they creep up the iron in
+## front of it; the rest under it
+func _bed_point() -> Vector3:
+	if randf() < 0.7:
+		var a := PI * 0.5 + randf_range(-1.25, 1.25)
+		var r := randf_range(0.82, 1.08)
+		return Vector3(cos(a) * r, 0.0, sin(a) * r)
+	var a2 := randf() * TAU
+	return Vector3(cos(a2), 0, sin(a2)) * sqrt(randf()) * radius
+
+
 func _born(c: Dictionary, age := 0.0) -> Dictionary:
-	var a := randf() * TAU
-	var r := sqrt(randf()) * radius
-	c.at = Vector3(cos(a) * r, 0.0, sin(a) * r)
+	var p := _bed_point()
+	var a := atan2(p.z, p.x)
+	var r := p.length()
+	c.at = p
 	c.life = randf_range(0.55, 0.95)
 	c.t = age * c.life
 	c.seed = randf()
-	c.size = randf_range(0.7, 1.2) * (1.15 - r / radius * 0.4)
+	c.size = randf_range(0.7, 1.15) * (0.85 if r > radius else 1.1)
 	c.out = Vector3(cos(a), 0, sin(a))
 	return c
 
@@ -145,26 +157,22 @@ func _born(c: Dictionary, age := 0.0) -> Dictionary:
 func _add_ember(burst := false) -> void:
 	if _embers.size() >= EMBERS:
 		_embers.remove_at(0)
-	var a := randf() * TAU
-	var r := sqrt(randf()) * radius * 1.1
-	var push := _blow_dir * (randf_range(0.4, 1.0) if burst else 0.0)
-	_embers.append({"at": Vector3(cos(a) * r, 0.15, sin(a) * r), "vel": Vector3(randf_range(-0.1, 0.1), randf_range(0.25, 0.6), randf_range(-0.1, 0.1)) + push,
+	var push := _blow_dir * (randf_range(0.2, 0.5) if burst else 0.0)
+	_embers.append({"at": _bed_point() + Vector3(0, 0.15, 0), "vel": Vector3(randf_range(-0.1, 0.1), randf_range(0.25, 0.6), randf_range(-0.1, 0.1)) + push,
 			"t": 0.0, "life": randf_range(1.5, 3.0), "size": randf_range(0.012, 0.024), "phase": randf() * TAU})
 
 
 func _add_spark(burst := false) -> void:
 	if _sparks.size() >= SPARKS:
 		_sparks.remove_at(0)
-	var a := randf() * TAU
-	var r := sqrt(randf()) * radius
-	var dir := Vector3(randf_range(-0.35, 0.35), 1.0, randf_range(-0.35, 0.35)).normalized() + (_blow_dir * 0.6 if burst else Vector3.ZERO)
-	_sparks.append({"at": Vector3(cos(a) * r, 0.2, sin(a) * r), "vel": dir * randf_range(1.6, 3.2) * (1.3 if burst else 1.0), "t": 0.0, "life": randf_range(0.35, 0.7)})
+	var dir := Vector3(randf_range(-0.35, 0.35), 1.0, randf_range(-0.35, 0.35)).normalized() + (_blow_dir * 0.25 if burst else Vector3.ZERO)
+	_sparks.append({"at": _bed_point() + Vector3(0, 0.2, 0), "vel": dir * randf_range(1.4, 2.6), "t": 0.0, "life": randf_range(0.35, 0.7)})
 
 
 func _process(dt: float) -> void:
 	_t += dt
-	var k := clampf(intensity + _blow * 0.8, 0.2, 3.0)
-	_blow = maxf(0.0, _blow - dt * 1.4)
+	var k := clampf(intensity + _blow * 0.25, 0.2, 2.2)
+	_blow = maxf(0.0, _blow - dt * 2.0)
 	# Flames: born round the bed, swelling and rising, leaning away from the bellows and lapping up
 	# round the iron
 	for i in FLAMES:
@@ -174,7 +182,7 @@ func _process(dt: float) -> void:
 			_born(c)
 		var age: float = c.t / c.life
 		var h: float = height * c.size * (0.55 + 0.45 * k) * (0.6 + 0.7 * age)
-		var lean: Vector3 = _blow_dir * _blow * 0.35 * age + (c.out as Vector3) * age * 0.18
+		var lean: Vector3 = _blow_dir * _blow * 0.12 * age + (c.out as Vector3) * age * 0.12
 		var at: Vector3 = c.at + lean + Vector3(0, age * 0.35 * (0.7 + 0.3 * k), 0)
 		_flames.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(h * 0.75, h, h * 0.75)), at))
 		_flames.set_instance_custom_data(i, Color(c.seed, age, 0, 0))
@@ -184,7 +192,7 @@ func _process(dt: float) -> void:
 	while _ember_due >= 1.0:
 		_ember_due -= 1.0
 		_add_ember()
-	_spark_due += dt * (1.0 + 4.0 * k * k)
+	_spark_due += dt * (1.0 + 2.5 * k)
 	while _spark_due >= 1.0:
 		_spark_due -= 1.0
 		_add_spark()

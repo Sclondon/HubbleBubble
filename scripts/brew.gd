@@ -679,6 +679,19 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 		spin += torque * 900.0 * h / maxf(f.size * f.size * 40.0, 0.2) / 40.0
 		spin *= 1.0 - h * (2.0 if under > 0 else 0.3)
 		pos += vel * h
+		# never through the iron: held inside it, and what was going outward stopped
+		var fl := Vector2(pos.x, pos.z)
+		var most: float = RADIUS * 0.92 * pent(fl.angle()) - f.size * 0.35
+		if fl.length() > most:
+			var n_out := fl.normalized()
+			fl = n_out * most
+			pos.x = fl.x
+			pos.z = fl.y
+			var vout := vel.x * n_out.x + vel.z * n_out.y
+			if vout > 0.0:
+				vel.x -= n_out.x * vout * 1.4
+				vel.z -= n_out.y * vout * 1.4
+		pos.y = minf(pos.y, 0.5)
 		if spin.length() > 0.0001:
 			rot = Basis(spin.normalized(), spin.length() * h) * rot
 		f.pos = pos
