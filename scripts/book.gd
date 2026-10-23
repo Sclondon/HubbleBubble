@@ -285,6 +285,31 @@ static func band_of(heat: float) -> int:
 	return 0
 
 
+## What the customers say, in rhyme (you, the witch, say nothing)
+const LINES := {
+	"thanks": [
+		"Oh that's the one, the very brew!\nGrumblewart, I'm in love with you!",
+		"Bottled up and corked so tight,\nI'll sleep like a baby bat tonight!",
+		"Bless your warts and bless your pot,\nthat's exactly what I've got!",
+		"Smells like feet and looks like sludge,\nthat's the stuff! I'll hold no grudge!",
+	],
+	"wrong": [
+		"That's not what I asked you for!\nWhat have you DONE? I'm out the door!",
+		"Wrong, you crone, it's WRONG, you see!\nNow look at what you've done to me!",
+		"I said one thing and you made another,\nI'm off to tell my witchy mother!",
+	],
+	"angry": [
+		"Waited long enough, I have!\nI'll take my coin to the hag in the bath!",
+		"Slow as a slug in a bucket of glue,\nI'm off, and I'm not coming back to you!",
+	],
+}
+
+
+static func line(kind: String) -> String:
+	var lines: Array = LINES[kind]
+	return lines[randi() % lines.size()]
+
+
 static func rhyme(kind: String) -> String:
 	var lines: Array = RHYMES[kind]
 	return lines[randi() % lines.size()]

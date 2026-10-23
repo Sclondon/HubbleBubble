@@ -1,30 +1,25 @@
 shader_type spatial;
-// Everything solid: colour painted on the corners, light worked out at the corners (moonlight,
-// a warm room and the fire under the cauldron), smoothed across the face. Bright and chunky.
-render_mode unshaded, cull_disabled;
+// Everything solid: the colour painted on its corners, lit by the lights about it (the fire under
+// the pot, the brew's own glow, the moon through the window, candles), the light wrapping a little
+// round the shoulders of things the way the old consoles' soft shading did. `glow` makes it shine by
+// itself; `flash` whites it for an instant.
+render_mode cull_disabled, specular_disabled;
 
-uniform vec3 sun_dir = vec3(0.35, 0.8, 0.55);
-uniform vec3 sun_col = vec3(0.5, 0.46, 0.55);
-uniform vec3 amb_col = vec3(0.74, 0.66, 0.82);
-uniform vec3 lamp_pos = vec3(0.0, 0.5, 0.6);
-uniform vec3 lamp_col = vec3(0.55, 0.8, 0.3);
 uniform vec3 tint = vec3(1.0);
 uniform float flash = 0.0;
 uniform float glow = 0.0;
-
-varying vec3 lit;
-
-void vertex() {
-	vec3 n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
-	vec3 at = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec3 to_lamp = lamp_pos - at;
-	float reach = 1.0 / (1.0 + dot(to_lamp, to_lamp) * 0.18);
-	vec3 light = amb_col + sun_col * max(dot(n, normalize(sun_dir)), 0.0)
-			+ lamp_col * reach * (0.3 + 0.7 * max(dot(n, normalize(to_lamp)), 0.0));
-	lit = mix(light, vec3(1.0), glow);
-}
+uniform float wrap = 0.4;
 
 void fragment() {
-	vec3 c = COLOR.rgb * tint * lit;
-	ALBEDO = mix(c, vec3(1.0, 0.95, 0.85), flash);
+	vec3 c = COLOR.rgb * tint;
+	ALBEDO = c;
+	EMISSION = c * glow * 1.4 + vec3(1.0, 0.95, 0.85) * flash;
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}
+
+void light() {
+	float d = dot(NORMAL, LIGHT);
+	float w = clamp((d + wrap) / (1.0 + wrap), 0.0, 1.0);
+	DIFFUSE_LIGHT += w * w * ATTENUATION * LIGHT_COLOR / PI;
 }

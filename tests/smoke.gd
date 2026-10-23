@@ -18,7 +18,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	await _frames(5)
+	await _seconds(1.0)
 	main.discoveries.clear()
 	_check(main.state == "title", "starts on the title")
 	await _frames(2)
@@ -108,7 +108,7 @@ func _run() -> void:
 	await _frames(10)
 	_send_touch(pot, false)
 	await _seconds(0.6)
-	_check(main.brew.size() == 1 and main.brew[0].what == 1, "dragging the toadstool into the pot adds it")
+	_check(main.brew.size() == 1 and main.brew[0].what == 1, "dragging the toadstool into the pot adds it (%s; picks %s k %.2f, on brew %s, stock %s, state %s)" % [str(main.brew), main.pick(from), main.pick_k, main.on_brew(from), str(main.stock), main.state])
 	_send_touch(_centre("jar0"), true)
 	await _frames(3)
 	_send_touch(_centre("jar0"), false)

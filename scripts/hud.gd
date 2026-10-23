@@ -172,6 +172,9 @@ func _press(index: int, at: Vector2) -> void:
 			elif _hit("go_free", at):
 				Sfx.play("tap")
 				shop.start_free()
+			elif _hit("go_swamp", at):
+				Sfx.play("tap")
+				shop.visit_swamp()
 			return
 		"swamp":
 			if _hit("pause", at):
@@ -220,7 +223,8 @@ func _press(index: int, at: Vector2) -> void:
 			shop.toggle_pause()
 		return
 	var thing := shop.pick(at)
-	if thing == "" or thing == "stir":
+	# On the brew it stirs, unless the finger is right on something standing behind it
+	if thing == "" or thing == "stir" or (shop.on_brew(at) and shop.pick_k > 0.6):
 		# The pot, or anywhere else in the middle: stirring (or, held still, tipping it out)
 		_touches[index] = {"id": "stir", "last": at, "from": at, "still": 0.0}
 		return
@@ -241,6 +245,9 @@ func _hit(id: String, at: Vector2) -> bool:
 # --- drawing ---
 
 func _draw() -> void:
+	if shop.loading():
+		_draw_loading()
+		return
 	match shop.state:
 		"title":
 			_draw_speech()
@@ -266,7 +273,6 @@ func _draw() -> void:
 	_draw_strip()
 	_draw_speech()
 	_draw_floaters()
-	_draw_hint()
 	if shop.book_open:
 		_draw_book()
 	match shop.state:
@@ -512,7 +518,7 @@ func _draw_speech() -> void:
 	if sp.who == "witch":
 		anchor = shop.screen_of(Vector3(0, Hut.CAULDRON_RIM + 0.5, 0.6))
 	else:
-		anchor = shop.screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.9, 0))
+		anchor = shop.screen_of(Hut.WINDOW_HEAD + Vector3(-0.75, 0.75, 0))
 	var top_limit := 270.0 if tall else 84.0
 	var low_limit := size_now.y * 0.62
 	var box := Rect2(anchor + Vector2(-bw * 0.5, -bh - 40), Vector2(bw, bh))
@@ -617,14 +623,14 @@ func _draw_title() -> void:
 	_text("Granny Grumblewart's Potion Shop", Vector2(w * 0.5, cy + fs * 0.55), 32 if tall else 38, PARCH, 9)
 	var pulse := 1.0 + sin(_t * 5.0) * 0.05
 	var bw := minf(w - 80, 520.0)
-	var by := h - (330 if tall else 300)
-	for i in 2:
-		var id: String = ["go_shop", "go_free"][i]
-		var br := Rect2(w * 0.5 - bw * 0.5, by + i * 110, bw, 92)
+	var by := h - (430 if tall else 400)
+	for i in 3:
+		var id: String = ["go_shop", "go_free", "go_swamp"][i]
+		var br := Rect2(w * 0.5 - bw * 0.5, by + i * 104, bw, 88)
 		buttons[id] = {"rect": br}
-		_box(br.grow(4 if i == 0 else 0), [GREEN, Color("b890f0")][i], INK, 5, 24)
-		_text(["Open the Shop", "Brew Freely in the Tower"][i], br.get_center() + Vector2(0, -8), int((36 if i == 0 else 30) * (pulse if i == 0 else 1.0)), Color.WHITE, 9)
-		_text(["Customers, orders, a coin to earn each night", "Make anything, and watch a witch drink it"][i], br.get_center() + Vector2(0, 28), 18, Color(1, 1, 1, 0.85), 5)
+		_box(br.grow(4 if i == 0 else 0), [GREEN, Color("b890f0"), Color("6aa8a0")][i], INK, 5, 24)
+		_text(["Open the Shop", "Brew Freely in the Tower", "Gather in the Swamp"][i], br.get_center() + Vector2(0, -8), int((36 if i == 0 else 30) * (pulse if i == 0 else 1.0)), Color.WHITE, 9)
+		_text(["Customers, orders, a coin to earn each night", "Make anything, and watch a witch drink it", "Fill your shelf for the nights to come"][i], br.get_center() + Vector2(0, 28), 18, Color(1, 1, 1, 0.85), 5)
 	if shop.best > 0:
 		_text("Best: %d coins" % shop.best, Vector2(w * 0.5, by - 40), 28, Color.WHITE, 8)
 	var r := Rect2(w - 84, 14, 70, 60)
@@ -937,11 +943,11 @@ func _draw_counts() -> void:
 	for i in 8:
 		if i >= Book.ingredients_on(shop.night):
 			continue
-		var p := shop.spot_screen("jar%d" % i) + Vector2(30, 26)
+		var p := shop.spot_screen("jar%d" % i) + Vector2(22, -30)
 		var n: int = shop.stock[i]
-		draw_circle(p, 17, INK)
-		draw_circle(p, 14, Color("f6e7c1") if n > 0 else Color("e8a090"))
-		_text(str(n), p, 20, INK, 0)
+		draw_circle(p, 12, INK)
+		draw_circle(p, 10, Color("f6e7c1") if n > 0 else Color("e8a090"))
+		_text(str(n), p, 15, INK, 0)
 
 
 ## Gathering in the swamp: the time left, what's in the basket, and a way out
@@ -950,11 +956,13 @@ func _draw_swamp() -> void:
 	var h := size_now.y
 	draw_rect(Rect2(0, 0, w, 70), Color(0.08, 0.04, 0.12, 0.55))
 	_text("THE SWAMP", Vector2(18, 36), 34, Color("a8e870"), 9, HORIZONTAL_ALIGNMENT_LEFT)
-	_text("%d" % int(ceil(maxf(shop.swamp_t, 0.0))), Vector2(w * 0.5, 36), 34, Color.WHITE, 9)
+	if shop.swamp_from != "visit":
+		_text("%d" % int(ceil(maxf(shop.swamp_t, 0.0))), Vector2(w * 0.5, 36), 34, Color.WHITE, 9)
 	_button_pause(buttons.pause.rect)
-	_text("Tap things to gather them for night %d" % (shop.night + 1), Vector2(w * 0.5, 104), 26, PARCH, 8)
-	# The basket: what's on hand for the night
-	var count := Book.ingredients_on(shop.night + 1)
+	var visit := shop.swamp_from == "visit"
+	_text("Tap things to gather them" if visit else "Tap things to gather them for night %d" % (shop.night + 1), Vector2(w * 0.5, 104), 26, PARCH, 8)
+	# The basket: what's on hand
+	var count := 8 if visit else Book.ingredients_on(shop.night + 1)
 	var bw := minf(w - 20, 760.0)
 	var r := Rect2(w * 0.5 - bw * 0.5, h - 240, bw, 112)
 	_box(r, PARCH, INK, 5, 20)
@@ -969,4 +977,18 @@ func _draw_swamp() -> void:
 	var done := Rect2(w * 0.5 - 170, h - 112, 340, 82)
 	buttons["leave_swamp"] = {"rect": done}
 	_box(done, GREEN, INK, 5, 22)
-	_text("Open the shop!", done.get_center(), 32, Color.WHITE, 8)
+	_text("Back home" if shop.swamp_from == "visit" else "Open the shop!", done.get_center(), 32, Color.WHITE, 8)
+
+
+## The first moments, while it warms up: the title over a bubbling pot, like the page's own loading screen
+func _draw_loading() -> void:
+	var w := size_now.x
+	var h := size_now.y
+	draw_rect(Rect2(Vector2.ZERO, size_now), Color("170d24"))
+	var c := Vector2(w * 0.5, h * 0.5)
+	_text("Hubble Bubble", c + Vector2(0, -60), 72, Color("8fe36b"), 14)
+	for k in 5:
+		var t := fmod(_t * 0.8 + k * 0.2, 1.0)
+		var p := c + Vector2((k - 2) * 26 + sin(_t * 3.0 + k) * 6.0, 60 - t * 50)
+		draw_circle(p, 9 * (1.0 - t * 0.5), Color(0.55, 1.0, 0.45, 1.0 - t))
+	_text("stirring the cauldron...", c + Vector2(0, 100), 24, Color("d8c8f0"), 6)

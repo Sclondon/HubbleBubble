@@ -30,6 +30,17 @@ func _initialize() -> void:
 func _run() -> void:
 	await _frames(10)
 	await _shot("title")
+	if only.begins_with("look_"):
+		main.start_free()
+		await _frames(5)
+		var effect := only.substr(5).replace("_", " ")
+		main.hut.set_brew(Color.WHITE, false, effect)
+		for i in 200:
+			main.heat = 80.0
+			await process_frame
+		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
+		quit()
+		return
 	if only == "swamp":
 		main.start_game()
 		main.state = "done"

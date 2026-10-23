@@ -870,25 +870,129 @@ def build_props():
         lug = egg("cauldron_lug", (sgn * 0.93, 0, 1.26), (0.06, 0.08, 0.06), seg=10, rings=6, sub=0)
         paint(lug, lit(plain(IRON_L)))
         feet.append(lug)
-    out["cauldron"] = [belly, inside, lip] + feet
-
-    # The fire pit: a ring of stones and a few logs crossed under the pot
-    pit = []
-    for k in range(11):
-        a = 2 * math.pi * k / 11
-        r = rnd.uniform(0.18, 0.25)
-        st = egg("stone", (math.cos(a) * 1.08, math.sin(a) * 1.0, r * 0.45), (r, r * 0.85, r * 0.6), seg=10, rings=6, sub=1,
-                 shape=lambda v: v * (1.0 + 0.12 * math.sin(v.x * 30) * math.sin(v.y * 27)))
-        sh = rnd.uniform(0.0, 1.0)
-        paint(st, lit(plain(shade("#8a8098", 0.1 * sh), shade("#5a5068", -0.2), 0.0, r)))
-        pit.append(st)
+    # A little flair: a gold band of runes round the belly, a grinning skull boss on the front,
+    # claws for feet, and green drips that have run over the lip and set
+    band = lathe("cauldron_band", [(0.68, 0.955, 0.955), (0.74, 0.99, 0.99), (0.8, 0.99, 0.99), (0.86, 0.975, 0.975)], seg=40, sub=0, cap_top=False, cap_bottom=False)
+    paint(band, lambda co, n: lin("#c89a3a").lerp(lin("#f2d070"), max(0.0, n.z * 0.5 + 0.3)))
+    extra = [band]
+    for k in range(14):
+        a = 2 * math.pi * k / 14
+        shape_k = k % 3
+        p = Vector((math.cos(a) * 1.0, math.sin(a) * 1.0, 0.77))
+        rot = Matrix.Rotation(a + math.pi / 2, 3, "Z")
+        if shape_k == 0:
+            rune = box("glow_rune", p, (0.05, 0.03, 0.09), rot=rot)
+        elif shape_k == 1:
+            rune = box("glow_rune", p, (0.09, 0.03, 0.03), rot=rot @ Matrix.Rotation(0.6, 3, "Y"))
+        else:
+            rune = egg("glow_rune", p, (0.035, 0.03, 0.035), seg=6, rings=4, sub=0)
+        paint(rune, lambda co, n: lin("#7aff5a"))
+        extra.append(rune)
+    skull_c = Vector((0, -1.02, 1.02))
+    skull = egg("cauldron_skull", skull_c, (0.16, 0.1, 0.15), seg=12, rings=8, sub=1, shape=lambda v: Vector((v.x * (1.0 - 0.3 * max(0.0, -v.z / 0.15)), v.y, v.z)))
+    paint(skull, lambda co, n: lin("#e8dcb8").lerp(lin("#a89870"), 0.4 * max(0.0, -n.z)))
+    extra.append(skull)
+    for sgn in (1, -1):
+        socket = egg("glow_socket", skull_c + Vector((sgn * 0.055, -0.08, 0.03)), (0.035, 0.02, 0.04), seg=8, rings=5, sub=0)
+        paint(socket, lambda co, n: lin("#7aff5a"))
+        extra.append(socket)
     for k in range(4):
-        a = math.pi * k / 4 + 0.3
+        tooth = box("skull_tooth", skull_c + Vector((-0.045 + k * 0.03, -0.085, -0.09)), (0.022, 0.02, 0.035))
+        paint(tooth, lambda co, n: lin("#f4ecd0"))
+        extra.append(tooth)
+    for k in range(9):
+        a = 2 * math.pi * k / 9 + 0.3
+        if abs(math.sin(a) + 1.0) < 0.35:
+            continue
+        top = Vector((math.cos(a) * 0.86, math.sin(a) * 0.86, 1.36))
+        length = 0.12 + 0.12 * ((k * 7) % 3)
+        drip = grow("drip", [top, top * Vector((1.06, 1.06, 1.0)) - Vector((0, 0, 0.06)), top * Vector((1.11, 1.11, 1.0)) - Vector((0, 0, length))],
+                    [(0, 1), (1, 2)], [0.05, 0.03, (0.035, 0.035)], sub=1)
+        paint(drip, lambda co, n: lin("#4ab83a").lerp(lin("#2a6a2a"), 0.4 * max(0.0, -n.z)))
+        extra.append(drip)
+    out["cauldron"] = [belly, inside, lip] + feet + extra
+    # Claw feet instead of the plain ones
+    for f in feet[:3]:
+        out["cauldron"].remove(f)
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + 0.5
+        ankle = Vector((math.cos(a) * 0.52, math.sin(a) * 0.52, 0.42))
+        out_d = Vector((math.cos(a), math.sin(a), 0))
+        leg = grow("claw_leg", [ankle, ankle + out_d * 0.18 + Vector((0, 0, -0.22)), ankle + out_d * 0.26 + Vector((0, 0, -0.36))], [(0, 1), (1, 2)],
+                   [0.1, 0.075, 0.07], sub=1)
+        paint(leg, lit(plain("#5d5470", "#2c2634", 0.0, 0.45)))
+        out["cauldron"].append(leg)
+        foot_c = ankle + out_d * 0.26 + Vector((0, 0, -0.36))
+        side = Vector((-out_d.y, out_d.x, 0))
+        for t in (-1, 0, 1):
+            toe_dir = (out_d + side * t * 0.6).normalized()
+            toe = grow("claw_toe", [foot_c, foot_c + toe_dir * 0.13 + Vector((0, 0, -0.03)), foot_c + toe_dir * 0.19 + Vector((0, 0, -0.06))], [(0, 1), (1, 2)],
+                       [0.04, 0.03, 0.006], sub=1)
+            paint(toe, lambda co, n: lin("#3a3346"))
+            out["cauldron"].append(toe)
+
+    # The fire pit: logs crossed in a bed of grey ash with embers in it (no ring of stones)
+    pit = []
+    ash = egg("ash", (0, 0, 0.0), (0.95, 0.9, 0.06), seg=20, rings=6, sub=1, shape=lambda v: Vector((v.x, v.y, max(v.z, 0.0))))
+    paint(ash, lambda co, n: lin("#4a4448").lerp(lin("#2a2428"), min(1.0, math.hypot(co.x, co.y))))
+    pit.append(ash)
+    for k in range(5):
+        a = math.pi * k / 5 + 0.3
         d = Vector((math.cos(a), math.sin(a), 0))
-        log = tube("log", -d * 0.72 + Vector((0, 0, 0.1 + k * 0.03)), d * 0.72 + Vector((0, 0, 0.12 + k * 0.03)), 0.09, 0.085, seg=10, sub=1)
-        paint(log, lambda co, n: lin("#6b4024").lerp(lin("#2a1810"), 0.6 if abs(co.x) + abs(co.y) < 0.35 else 0.0) * (0.8 + 0.2 * n.z))
+        log = grow("log", [-d * 0.78 + Vector((0, 0, 0.1 + (k % 2) * 0.06)), d * 0.1 + Vector((0, 0, 0.16 + (k % 2) * 0.05)), d * 0.78 + Vector((0, 0, 0.1 + (k % 2) * 0.06))],
+                   [(0, 1), (1, 2)], [0.1, 0.11, 0.09], sub=1)
+        paint(log, lambda co, n: lin("#6b4024").lerp(lin("#1a100a"), max(0.0, 1.0 - math.hypot(co.x, co.y) * 1.6)))
         pit.append(log)
+    for k in range(10):
+        a = k * 2.3
+        r = 0.2 + (k % 4) * 0.12
+        em = egg("glow_ember", (math.cos(a) * r, math.sin(a) * r, 0.06), (0.05, 0.05, 0.025), seg=6, rings=4, sub=0)
+        paint(em, lambda co, n: lin("#ff8a2a"))
+        pit.append(em)
     out["firepit"] = pit
+
+    # A shelf curving round behind the pot, below the serving counter, for the ingredients to
+    # stand on in an arc: a curved plank on brackets, a lip along its front. Centred on the
+    # cauldron; it runs from -66 to +66 degrees about the far side (the -Y side here).
+    shelf = []
+    r_in, r_out, top_z = 1.55, 2.0, 1.12
+    a0, a1 = math.radians(-66), math.radians(66)
+    bm = bmesh.new()
+    seg = 28
+    rows = []
+    for i in range(seg + 1):
+        t = a0 + (a1 - a0) * i / seg
+        d = Vector((math.sin(t), -math.cos(t), 0))
+        rows.append([bm.verts.new(d * r_in + Vector((0, 0, top_z))), bm.verts.new(d * r_out + Vector((0, 0, top_z))),
+                     bm.verts.new(d * r_out + Vector((0, 0, top_z - 0.08))), bm.verts.new(d * r_in + Vector((0, 0, top_z - 0.08)))])
+    for i in range(seg):
+        for j in range(4):
+            bm.faces.new((rows[i][j], rows[i + 1][j], rows[i + 1][(j + 1) % 4], rows[i][(j + 1) % 4]))
+    bm.faces.new(rows[0][::-1])
+    bm.faces.new(rows[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new("shelf_arc")
+    bm.to_mesh(me)
+    bm.free()
+    plank = link(bpy.data.objects.new("shelf_arc", me))
+    paint(plank, lambda co, n: lin("#a8683a").lerp(lin("#7a4624"), 0.25 * (math.sin(math.atan2(co.x, -co.y) * 40) > 0.6)) * (0.7 + 0.3 * max(0.0, n.z)))
+    shelf.append(plank)
+    for i in range(seg + 1):
+        pass
+    lip_pts = []
+    for i in range(13):
+        t = a0 + (a1 - a0) * i / 12
+        lip_pts.append(Vector((math.sin(t), -math.cos(t), 0)) * (r_in + 0.02) + Vector((0, 0, top_z + 0.03)))
+    lip_ob = grow("shelf_lip", lip_pts, [(i, i + 1) for i in range(12)], [0.025] * 13, sub=0)
+    paint(lip_ob, lambda co, n: lin("#7a4624"))
+    shelf.append(lip_ob)
+    for k in range(5):
+        t = a0 + (a1 - a0) * k / 4
+        d = Vector((math.sin(t), -math.cos(t), 0))
+        post = grow("shelf_post", [d * 1.78 + Vector((0, 0, 0.0)), d * 1.78 + Vector((0, 0, top_z - 0.08))], [(0, 1)], [0.05, 0.045], sub=0)
+        paint(post, lambda co, n: lin("#6b3e22"))
+        shelf.append(post)
+    out["shelf_arc"] = shelf
 
     # The table in front of the pot: a thick top with two raised steps along the back, so three
     # rows of things stand one behind another (the back step highest), on chunky legs
@@ -1350,9 +1454,9 @@ def build_props():
     out["stick"] = [stick, blade, knob]
 
     # The wand standing in a jar of sand; the wand is its own piece (origin at its grip)
-    jar = lathe("wand_jar", [(0.0, 0.08, 0.08), (0.12, 0.1, 0.1), (0.16, 0.07, 0.07), (0.2, 0.07, 0.07)], seg=14, sub=1, cap_top=True)
-    paint(jar, lit(plain("#6a8aa8", "#3a5a78", 0.0, 0.2)))
-    out["wand_jar"] = [jar]
+    wjar = lathe("wand_jar", [(0.0, 0.08, 0.08), (0.12, 0.1, 0.1), (0.16, 0.07, 0.07), (0.2, 0.07, 0.07)], seg=14, sub=1, cap_top=True)
+    paint(wjar, lit(plain("#6a8aa8", "#3a5a78", 0.0, 0.2)))
+    out["wand_jar"] = [wjar]
     wand = tube("wand", (0, 0, 0), (0, 0, 0.42), 0.016, 0.012, seg=8, sub=1)
     paint(wand, lambda co, n: lin("#3a2418"))
     star = flat("glow_star", [(math.cos(2 * math.pi * k / 10 + math.pi / 2) * (0.07 if k % 2 == 0 else 0.03),
@@ -1361,30 +1465,88 @@ def build_props():
     paint(star, lambda co, n: lin("#fff27a"))
     out["wand"] = [wand, star]
 
-    # A rack of empty bottles waiting to be filled
-    rack = [box("rack", (0, 0, 0.03), (0.56, 0.2, 0.06), bevel=0.012)]
+    # The bottles are jars like the Eye of Newt's, empty, three on a tray
+    rack = [box("rack", (0, 0, 0.03), (0.62, 0.22, 0.06), bevel=0.012)]
     paint(rack[0], lit(plain("#8a5228")))
     for k in range(3):
-        x = (k - 1) * 0.17
-        b = egg("glass_rack_bottle", (x, 0, 0.15), (0.075, 0.075, 0.09), seg=12, rings=8, sub=1)
-        nk = tube("glass_rack_neck", (x, 0, 0.22), (x, 0, 0.3), 0.025, 0.025, seg=8, sub=0)
-        ck = tube("rack_cork", (x, 0, 0.3), (x, 0, 0.34), 0.03, 0.028, seg=8, sub=0)
-        paint(b, lambda co, n: lin("#c8eaf4").lerp(Vector((1, 1, 1)), 0.4 * max(0.0, -n.y)))
-        paint(nk, lambda co, n: lin("#c8eaf4"))
-        paint(ck, lambda co, n: lin("#c8925a"))
-        rack += [b, nk, ck]
+        x = (k - 1) * 0.2
+        for part in jar("rack_jar%d" % k, 0.085, 0.22):
+            part.data.transform(Matrix.Translation((x, 0, 0.06)))
+            rack.append(part)
     out["bottles"] = rack
-    # One filled bottle, flown to the customer; its liquid is its own piece so the game can colour it
-    glass = egg("glass_bottle", (0, 0, 0.13), (0.13, 0.13, 0.13), seg=14, rings=9, sub=1)
-    paint(glass, lambda co, n: lin("#d8f0f8"))
-    neck = tube("glass_bottle_neck", (0, 0, 0.24), (0, 0, 0.36), 0.045, 0.045, seg=10, sub=0)
-    paint(neck, lambda co, n: lin("#d8f0f8"))
-    cork = tube("bottle_cork", (0, 0, 0.36), (0, 0, 0.42), 0.055, 0.05, seg=10, sub=0)
-    paint(cork, lambda co, n: lin("#c8925a"))
-    liquid = egg("liquid", (0, -0.002, 0.12), (0.125, 0.125, 0.105), seg=14, rings=8, sub=1)
+    # One filled jar, flown to whoever it's for; its liquid is its own piece so the game can colour it
+    out["potion"] = jar("potion_jar", 0.15, 0.36)
+    liquid = lathe("liquid", [(0.02, 0.138, 0.138), (0.25, 0.138, 0.138)], seg=16, sub=0)
     paint(liquid, lambda co, n: Vector((1, 1, 1)) * (0.75 + 0.25 * max(0.0, n.z)))
-    out["potion"] = [glass, neck, cork]
     out["potion_liquid"] = [liquid]
+
+    # One of each ingredient, as it's picked up and carried to the pot
+    out["one_eye"] = [eyeball("one_eye", (0, 0, 0.07), 0.07, look=Vector((0.2, -1, 0.3)))]
+    st = grow("one_shroom_stem", [(0, 0, 0.0), (0.01, 0, 0.1), (0.0, 0, 0.17)], [(0, 1), (1, 2)], [0.045, 0.035, 0.04], sub=2)
+    paint(st, lambda co, n: lin("#fff4dc"))
+    cap = egg("one_shroom_cap", (0, 0, 0.18), (0.12, 0.12, 0.085), seg=16, rings=10, sub=1,
+              shape=lambda v: Vector((v.x, v.y, max(v.z, -0.004) if v.z > -0.004 else v.z * 0.15)))
+    paint(cap, lambda co, n: (lin("#fffbf0") if (n.z > 0.15 and math.sin(co.x * 58) * math.sin(co.y * 58 + 1.0) > 0.55) else lin("#ff4a3a")) if n.z > -0.2 else lin("#f0dcb0"))
+    out["one_shroom"] = [st, cap]
+    pivot1 = Vector((0, 0, 0.0))
+    tips1 = [Vector((-0.2, 0, 0.12)), Vector((-0.24, 0, -0.02)), Vector((-0.16, 0, -0.14)), Vector((0.02, 0, -0.16)), Vector((0.16, 0, -0.1))]
+    outline1 = []
+    for i in range(len(tips1)):
+        outline1.append((tips1[i].x, tips1[i].z))
+        if i < len(tips1) - 1:
+            m = (tips1[i] + tips1[i + 1]) / 2 * 0.7
+            outline1.append((m.x, m.z))
+    outline1.append((0.04, 0.06))
+    memb1 = flat("one_wing", outline1, 0.01, (0, 0, 0.15), Matrix.Rotation(math.pi / 2, 3, "X"), sub=1)
+    paint(memb1, lambda co, n: lin("#9a5ad8").lerp(lin("#4c2a7e"), min(1.0, (co - Vector((0, 0, 0.15))).length * 3.5)))
+    wing_parts = [memb1]
+    for t in tips1:
+        bone_ = grow("one_wing_bone", [Vector((0, 0.01, 0.15)), Vector((t.x, 0.01, t.z + 0.15))], [(0, 1)], [0.012, 0.005], sub=1)
+        paint(bone_, lambda co, n: lin("#3a2050"))
+        wing_parts.append(bone_)
+    out["one_wing"] = wing_parts
+    out["one_leg"] = frog_leg("one_leg", (-0.12, 0, 0.04), 1, 0.0)
+    sp = []
+    body1 = egg("one_spider_body", (0, 0.02, 0.06), (0.075, 0.09, 0.06), seg=12, rings=8, sub=1)
+    paint(body1, lambda co, n: lin("#e8303a") if (abs(co.x) < 0.02 and co.z > 0.1) else lin("#3a3260"))
+    head1 = egg("one_spider_head", (0, -0.08, 0.06), (0.045, 0.04, 0.04), seg=10, rings=6, sub=1)
+    paint(head1, lambda co, n: lin("#2e2a4a"))
+    sp += [body1, head1]
+    for sgn in (1, -1):
+        for k in range(4):
+            hip = Vector((sgn * 0.03, -0.04 + k * 0.03, 0.06))
+            knee = hip + Vector((sgn * 0.08, (k - 1.5) * 0.03, 0.06))
+            foot = hip + Vector((sgn * 0.14, (k - 1.5) * 0.05, -0.05))
+            lg = grow("one_spider_leg", [hip, knee, foot], [(0, 1), (1, 2)], [0.012, 0.01, 0.005], sub=1)
+            paint(lg, lambda co, n: lin("#2e2a4a"))
+            sp.append(lg)
+    out["one_spider"] = sp
+    crescent1 = []
+    for i in range(13):
+        th = -1.3 + 2.6 * i / 12.0
+        crescent1.append((math.cos(th) * 0.11, math.sin(th) * 0.11))
+    for i in range(13):
+        th = -1.1 + 2.2 * (1.0 - i / 12.0)
+        crescent1.append((math.cos(th) * 0.07 + 0.035, math.sin(th) * 0.07))
+    out["one_petal"] = [flat("glow_one_petal", crescent1, 0.01, (0, 0, 0.08), Matrix.Rotation(math.pi / 2, 3, "X"), sub=1)]
+    paint(out["one_petal"][0], lambda co, n: lin("#e0ecff"))
+    petal_stem = grow("one_petal_stem", [(0.0, 0.0, 0.0), (0.02, 0.0, 0.06)], [(0, 1)], [0.01, 0.008], sub=0)
+    paint(petal_stem, lambda co, n: lin("#5aaa4a"))
+    out["one_petal"].append(petal_stem)
+    pp1 = grow("one_pepper", [(-0.08, 0, 0.06), (0.0, 0, 0.1), (0.07, 0, 0.07), (0.12, 0, 0.12)], [(0, 1), (1, 2), (2, 3)], [0.045, 0.04, 0.022, 0.004], sub=2)
+    paint(pp1, lambda co, n: lin("#fffafc"))
+    stem1 = grow("one_pepper_stem", [(-0.08, 0, 0.06), (-0.12, 0, 0.1)], [(0, 1)], [0.015, 0.008], sub=1)
+    paint(stem1, lambda co, n: lin("#4a9a3a"))
+    eyes1 = []
+    for sgn in (1, -1):
+        dot = egg("one_pepper_eye", (-0.02 + sgn * 0.0, sgn * 0.022, 0.13), (0.01, 0.01, 0.007), seg=6, rings=4, sub=0)
+        paint(dot, lambda co, n: lin(INK))
+        eyes1.append(dot)
+    out["one_pepper"] = [pp1, stem1] + eyes1
+    shield1 = [(0, 0.16), (0.09, 0.11), (0.11, 0.02), (0.08, -0.08), (0, -0.13), (-0.08, -0.08), (-0.11, 0.02), (-0.09, 0.11)]
+    one_scale = flat("one_scale", shield1, 0.025, (0, 0, 0.13), Matrix.Rotation(math.pi / 2, 3, "X"), sub=2)
+    paint(one_scale, lambda co, n: lin("#ffb83a").lerp(lin("#ff5a1a"), max(0.0, min(1.0, (0.2 - co.z) * 4.0))))
+    out["one_scale"] = [one_scale]
 
     # The recipe book, open on a little stand
     stand = box("book_stand", (0, 0.03, 0.06), (0.42, 0.24, 0.08), bevel=0.015, rot=Matrix.Rotation(0.0, 3, "Z"))

@@ -89,6 +89,11 @@ var _next_order_id := 0
 var _last_kind := ""
 var _keys_down := {}
 var _discovered_now := false
+var _boot_t := 0.0
+## How near the middle of the last thing picked the point was (0 dead on, 1 at its edge)
+var pick_k := 1.0
+## "night" (between nights) or "visit" (from the title): where the swamp goes back to
+var swamp_from := "night"
 var _held: Node3D
 var _held_which := 0
 var _held_to := Vector3.ZERO
@@ -120,6 +125,9 @@ func _ready() -> void:
 	screen.material = ShaderMaterial.new()
 	(screen.material as ShaderMaterial).shader = preload("res://shaders/n64.gdshader")
 	under.add_child(screen)
+	var env := WorldEnvironment.new()
+	env.environment = _atmosphere()
+	view.add_child(env)
 	hut = Hut.new()
 	hut.name = "hut"
 	view.add_child(hut)
@@ -176,17 +184,38 @@ func _frame() -> void:
 	elif tall:
 		# Phone: framed by width; you look down over the pot at the table and the window
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
-		camera.fov = 45.0
+		camera.fov = 52.0
 		var spare := clampf((s.y / s.x - 2.17) * 1.2, -0.5, 0.6)
-		camera.position = Vector3(0, 3.35 + spare * 0.5, 2.05 + spare * 0.4)
-		camera.look_at(Vector3(0, 1.1, -1.25))
+		camera.position = Vector3(0, 2.6 + spare * 0.35, 2.95 + spare * 0.5)
+		camera.look_at(Vector3(0, 1.32, -1.5))
 	else:
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
-		camera.fov = 50.0
-		camera.position = Vector3(0, 3.6, 2.85)
-		camera.look_at(Vector3(0, 1.3, -1.4))
+		camera.fov = 48.0
+		camera.position = Vector3(0, 2.85, 4.3)
+		camera.look_at(Vector3(0, 1.25, -1.4))
 	if hud != null:
 		hud.layout()
+
+
+## Dark and close: a dim violet ambient, fog gathering in the corners, a glow round bright things
+func _atmosphere() -> Environment:
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.background_color = Color(0.03, 0.02, 0.05)
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color(0.3, 0.24, 0.42)
+	e.ambient_light_energy = 1.0
+	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	e.tonemap_exposure = 1.3
+	e.fog_enabled = true
+	e.fog_light_color = Color(0.1, 0.07, 0.16)
+	e.fog_density = 0.045
+	e.fog_aerial_perspective = 0.0
+	e.glow_enabled = true
+	e.glow_intensity = 0.7
+	e.glow_bloom = 0.08
+	e.glow_hdr_threshold = 0.9
+	return e
 
 
 func set_n64(on: bool) -> void:
@@ -214,6 +243,7 @@ func pick(at: Vector2) -> String:
 		if k < 1.0 and k < best_k:
 			best_k = k
 			best = id
+	pick_k = best_k
 	return best
 
 
@@ -239,6 +269,15 @@ func tap(id: String) -> void:
 			toggle_book()
 
 
+## Whether a point on the screen is on the brew (an oval, seen at an angle)
+func on_brew(at: Vector2) -> bool:
+	var c := screen_of(Vector3(0, Hut.BREW_LEVEL, 0))
+	var rx := absf(screen_of(Vector3(Hut.BREW_R, Hut.BREW_LEVEL, 0)).x - c.x)
+	var ry := absf(screen_of(Vector3(0, Hut.BREW_LEVEL, Hut.BREW_R)).y - c.y)
+	var d := (at - c) / Vector2(maxf(rx, 1.0), maxf(ry, 1.0))
+	return d.length() < 0.95
+
+
 func cauldron_screen() -> Array:
 	var c := screen_of(Vector3(0, Hut.CAULDRON_RIM, 0))
 	var e := screen_of(Vector3(0.9, Hut.CAULDRON_RIM, 0))
@@ -261,7 +300,8 @@ func _to_title() -> void:
 
 func start_game() -> void:
 	mode = "shop"
-	stock = [4, 4, 4, 4, 4, 4, 4, 4]
+	for i in 8:
+		stock[i] = maxi(stock[i], 4)
 	night = 1
 	score = 0
 	learned = {}
@@ -346,8 +386,25 @@ func back_from_tower() -> void:
 	Sfx.play("tap")
 
 
+## Still warming up: the first moments, and while the book's pictures are taken
+func loading() -> bool:
+	return _boot_t < 0.8 or (album != null and album.is_processing() and _boot_t < 8.0)
+
+
+## From the title: off to the swamp to gather, whenever you like (what's gathered keeps)
+func visit_swamp() -> void:
+	swamp_from = "visit"
+	mode = "shop"
+	state = "swamp"
+	swamp_t = 9999.0
+	swamp.open_for(8)
+	_frame()
+	Sfx.music(true, 0.9)
+
+
 ## Between nights: off to the swamp to gather what the next night will want
 func _to_swamp() -> void:
+	swamp_from = "night"
 	state = "swamp"
 	swamp_t = SWAMP_TIME
 	swamp.open_for(Book.ingredients_on(night + 1))
@@ -384,6 +441,11 @@ func leave_swamp() -> void:
 	if state != "swamp":
 		return
 	Sfx.music(false)
+	_save()
+	if swamp_from == "visit":
+		_to_title()
+		_frame()
+		return
 	night += 1
 	_start_night()
 	_frame()
@@ -471,6 +533,7 @@ func _clear_customers() -> void:
 # --- every frame ---
 
 func _process(dt: float) -> void:
+	_boot_t += dt
 	_update_speech(dt)
 	if is_instance_valid(_held):
 		hut.carry(_held, _held_to, dt)
@@ -644,7 +707,8 @@ func _storm_off(i: int) -> void:
 	Sfx.play("huff")
 	combo = 0
 	lost += 1
-	_say_witch(Book.rhyme("angry"))
+	if is_instance_valid(o.customer):
+		_say_folk(Book.line("angry"), o.who.voice, o.customer, true)
 	_remove_order(i)
 
 
@@ -718,7 +782,7 @@ func _over(at: Vector2) -> Vector3:
 	var p := at * (Vector2(view.size) / get_viewport().get_visible_rect().size)
 	var from := camera.project_ray_origin(p)
 	var dir := camera.project_ray_normal(p)
-	var height := Hut.CAULDRON_RIM + 0.45
+	var height := Hut.CAULDRON_RIM + 0.12
 	if absf(dir.y) < 0.001:
 		return from
 	var t := (height - from.y) / dir.y
@@ -793,7 +857,7 @@ func bottle() -> void:
 ## The ladle dragged round by `angle` radians (positive with the sun)
 ## The stick dragged round by `angle` radians (positive with the sun); each whole turn counts
 func stir(angle: float) -> void:
-	if not _brewing() or night < 2 and mode == "shop" or absf(angle) < 0.0001:
+	if not _brewing() or absf(angle) < 0.0001:
 		return
 	_stir_angle += angle
 	hut.stir_angle = _stir_angle
@@ -861,7 +925,8 @@ func _record(step: Dictionary) -> void:
 			return
 		brew.append(step.duplicate())
 	done_kinds[step.kind] = done_kinds.get(step.kind, 0) + 1
-	hut.set_brew(Lore.resolve(brew).colour)
+	var r := Lore.resolve(brew)
+	hut.set_brew(r.colour, false, r.effect if r.effect != "nothing" else "")
 	hud.tick_step(brew.size() - 1)
 
 
@@ -930,15 +995,14 @@ func _serve(result: Dictionary) -> void:
 		if combo > 1:
 			_float("Combo x%d!" % combo, at + Vector2(0, 50), Color("a0ffb0"))
 		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.happy())
-		if randf() < 0.6:
-			_say_witch(Book.rhyme("serve"))
+		_say_folk(Book.line("thanks"), o.who.voice, o.customer, true)
 	else:
 		combo = 0
 		lost += 1
 		Sfx.play("huff")
 		_float(Lore.name_of(result) + "?!", screen_of(Hut.WINDOW_HEAD + Vector3(0, 0.3, 0.3)), Color("ff9a8a"))
 		_fly_bottle(result.colour, o.customer, func(c: Witch) -> void: c.drink(result, true))
-		_say_witch(Book.rhyme("wrong"))
+		_say_folk(Book.line("wrong"), o.who.voice, o.customer, true)
 	_remove_order(i)
 	hut.fresh()
 	_reset_brew()
@@ -965,12 +1029,13 @@ func _fly_bottle(col: Color, customer: Witch, then: Callable) -> void:
 
 # --- talk ---
 
-func _say_witch(text: String) -> void:
-	speech = {"who": "witch", "text": text, "shown": 0.0, "life": 2.2 + text.length() * 0.045, "voice": 1.0}
+## You don't talk; the customers do
+func _say_witch(_text: String) -> void:
+	pass
 
 
-func _say_folk(text: String, voice: float, customer: Witch) -> void:
-	if speech.get("who", "") == "witch" and speech.shown < speech.text.length():
+func _say_folk(text: String, voice: float, customer: Witch, urgent := false) -> void:
+	if not urgent and speech.get("who", "") == "folk" and speech.shown < speech.text.length():
 		return
 	speech = {"who": "folk", "text": text, "shown": 0.0, "life": 1.6 + text.length() * 0.04, "voice": voice, "customer": customer}
 
@@ -997,8 +1062,9 @@ func _update_speech(dt: float) -> void:
 			speech = {}
 
 
-func _float(text: String, at: Vector2, col: Color, big := false) -> void:
-	floaters.append({"text": text, "pos": at, "t": 0.0, "col": col, "big": big})
+## (No floating words: what happens is seen and heard instead)
+func _float(_text: String, _at: Vector2, _col: Color, _big := false) -> void:
+	pass
 
 
 # --- keys (touch and mouse go through the hud) ---
@@ -1066,6 +1132,7 @@ func _load() -> void:
 		best = cfg.get_value("shop", "best", 0)
 		n64 = cfg.get_value("shop", "n64", true)
 		discoveries = cfg.get_value("shop", "discoveries", {})
+		stock = cfg.get_value("shop", "stock", stock)
 		Sfx.set_muted(not cfg.get_value("shop", "sound", true))
 
 
@@ -1075,4 +1142,5 @@ func _save() -> void:
 	cfg.set_value("shop", "sound", not sfx.muted)
 	cfg.set_value("shop", "n64", n64)
 	cfg.set_value("shop", "discoveries", discoveries)
+	cfg.set_value("shop", "stock", stock)
 	cfg.save(save_path)

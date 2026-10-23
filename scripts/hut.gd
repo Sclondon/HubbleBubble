@@ -1,7 +1,9 @@
 class_name Hut
 extends Node3D
-## Grumblewart's hut: stone walls, a plank floor, shelves of jars, the serving window with the night
-## outside it (the moon crossing it is the clock), and the cauldron on its fire in the middle.
+## Grumblewart's hut, seen as she sees it, standing at her cauldron: the pot in front on its fire,
+## a shelf of ingredients curving round behind it below the serving window, the night outside the
+## window (the moon crossing it is the clock), stone walls, a plank floor, jars, herbs. Lit by the
+## fire under the pot, the brew's own glow, the moon through the window and a candle.
 
 const STONE := Color("8a7aa6")
 const STONE_D := Color("4f4168")
@@ -19,53 +21,38 @@ const WINDOW_HEAD := Vector3(0, 2.0, -3.3)
 const CAULDRON_RIM := 1.36
 const BREW_LEVEL := 1.24
 const BREW_R := 0.8
-## The table stands between the pot and the serving window
-const TABLE := Vector3(0, 0, -1.55)
+## The shelf in an arc behind the pot: how far out its middle is, how high its top
+const SHELF_R := 1.78
+const SHELF_TOP := 1.12
 ## The room was built with its window off to one side: it's moved over so the window is in the middle
 const ROOM_SHIFT := -1.05
 const INGREDIENT_MODELS := ["ing_eye", "ing_shroom", "ing_wing", "ing_leg", "ing_spider", "ing_petal", "ing_pepper", "ing_scale"]
+## One of each, as picked up and carried
+const ONE_MODELS := ["one_eye", "one_shroom", "one_wing", "one_leg", "one_spider", "one_petal", "one_pepper", "one_scale"]
 
 ## Things that can be tapped: id -> node, and id -> {at: where, r: how big}
 var props := {}
 var spots := {}
 var stick: Node3D
+var brew: Brew
+var fire: Fire
+var moon: Node3D
+## 0 to 100, from the bellows
+var heat := 0.0
+## The stirring stick: how far round it's been dragged, and whether it's going
+var stir_angle := 0.0
+var stirring := false
 var _bellows_top: Node3D
 var _squeeze := 0.0
 var _pokes := {}
 var _prop_scale := {}
-## The stirring stick: how far round it's been dragged, and whether it's going
-var stir_angle := 0.0
-var stirring := false
 var _stick_angle := 0.0
 var _wand_t := 9.0
 var _wand: Node3D
-
-var brew_mat: ShaderMaterial
-var brew_disc: MeshInstance3D
-var moon: Node3D
-var fire: Node3D
-var flames: Array[MeshInstance3D] = []
-var fire_mats: Array[ShaderMaterial] = []
-var bubbles: CPUParticles3D
-var _bubble_mat: ShaderMaterial
-var steam: CPUParticles3D
-var splash: CPUParticles3D
-var sparkle: CPUParticles3D
-var smoke: CPUParticles3D
-var wisps: CPUParticles3D
-var embers: CPUParticles3D
-var big_bubbles: CPUParticles3D
-var _ripples := [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
-var _next_ripple := 0
-var _glow := 0.0
-var _last_col := Book.WATER
-var heat := 0.0
-var brew_col := Book.WATER
-var _shown_col := Book.WATER
-var _murk := 0.0
-var _spin := 0.0
+var _wake_t := 0.0
+var _flare := 0.0
+var _edge_fires: Array[Fire] = []
 var _rng := RandomNumberGenerator.new()
-var _candles: Array[MeshInstance3D] = []
 var _night_t := 0.0
 
 
@@ -79,83 +66,48 @@ func _ready() -> void:
 		if child is Node3D:
 			(child as Node3D).position.x += ROOM_SHIFT
 	_cauldron()
-	_table()
+	_shelf()
+	_lights()
 
 
 func _process(dt: float) -> void:
 	_animate_props(dt)
 	_animate_stick(dt)
 	_animate_wand(dt)
-	var t := Time.get_ticks_msec() / 1000.0
-	# The fire leaps with the heat; its light on everything follows
+	# The fire leaps with the heat (and flares when something fiery goes in)
 	var h := heat / 100.0
-	for i in flames.size():
-		var f := flames[i]
-		var wob := 0.75 + 0.25 * sin(t * (9.0 + i * 1.7) + i * 2.1)
-		f.scale = Vector3(0.7 + h * 0.6, (0.35 + h * 1.25) * wob, 0.7 + h * 0.6)
-	for m in fire_mats:
-		m.set_shader_parameter("strength", 0.55 + h * 0.8)
-	var flick := 0.85 + 0.15 * sin(t * 13.0) * sin(t * 7.3)
-	var fire_col := Color("9cf05a").lerp(Color("ffb040"), clampf(h * 1.2 - 0.2, 0.0, 1.0))
-	Shape.set_all("lamp_col", Shape.lin3(fire_col) * (0.45 + h * 1.4) * flick)
-	for c in _candles:
-		c.scale = Vector3.ONE * (0.9 + 0.12 * sin(t * 11.0 + c.position.x * 5.0))
-	# The brew catches up with its colour, and turns murky when spoilt
-	_shown_col = _shown_col.lerp(brew_col, minf(1.0, dt * 3.0))
-	brew_mat.set_shader_parameter("colour", Shape.lin3(_shown_col))
-	brew_mat.set_shader_parameter("murk", _murk)
-	brew_mat.set_shader_parameter("spin", _spin)
-	_glow = maxf(0.0, _glow - dt * 1.2)
-	brew_mat.set_shader_parameter("glow", _glow)
-	brew_mat.set_shader_parameter("boil", clampf(h * 1.3 - 0.15, 0.0, 1.0))
-	brew_mat.set_shader_parameter("now", t)
-	brew_mat.set_shader_parameter("colour2", Shape.lin3(_last_col.lerp(_shown_col, 0.2)))
-	bubbles.scale_amount_max = 0.8 + h * 1.4
-	bubbles.speed_scale = 0.6 + h * 1.4
-	var bm := _bubble_mat
-	(bm as ShaderMaterial).set_shader_parameter("colour", Shape.lin3(_shown_col.lightened(0.35)))
-	steam.emitting = h > 0.3
-	brew_disc.position.y = BREW_LEVEL + h * 0.03
+	_flare = maxf(0.0, _flare - dt * 1.5)
+	fire.intensity = 0.7 + h * 0.75 + _flare * 0.5
+	fire.light_energy = 2.0 + h * 3.5 + _flare * 2.0
+	fire.scale = Vector3(1.0, 0.7 + h * 0.8 + _flare * 0.4, 1.0)
+	for f in _edge_fires:
+		f.intensity = 0.6 + h * 0.8 + _flare * 0.5
+		f.scale = Vector3.ONE * (0.55 + h * 0.75 + _flare * 0.4)
+	brew.heat = h
 
 
 ## How far the stirring has turned the brew (radians)
 func stir_to(angle: float) -> void:
-	_spin = angle
+	brew.spin = angle
 
 
-func set_brew(col: Color, murky := false) -> void:
-	brew_col = col
-	_murk = 1.0 if murky else 0.0
+## The brew becomes what's in it: its look for the effect it's making, murky when spoilt
+func set_brew(col: Color, murky := false, effect := "") -> void:
+	brew.murk = 1.0 if murky else 0.0
+	if not murky:
+		brew.set_look(PotionLook.for_effect(effect, col) if effect != "" else PotionLook.from_colour(col))
 
 
 ## Clean water again, at once
 func fresh() -> void:
-	brew_col = Book.WATER
-	_shown_col = Book.WATER
-	_murk = 0.0
-
-
-func plop(col: Color) -> void:
-	_burst(splash, col.lightened(0.2))
-	ripple(Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)), 0.8)
-
-
-func zap() -> void:
-	react("zap", _shown_col, 1.0)
-
-
-func poof() -> void:
-	_burst(smoke, Color("4a4038"), 8, 0.9)
-	_burst(wisps, Color("2a2420"), 8, 0.6)
-	ripple(Vector3.ZERO, 1.5)
+	brew.murk = 0.0
+	brew.set_look(PotionLook.from_colour(Book.WATER), true)
 
 
 ## Where the moon is, 0 at the start of the night to 1 at the end
 func night_progress(t: float) -> void:
 	_night_t = t
 	moon.position = Vector3(lerpf(-0.65, 2.75, t) + ROOM_SHIFT, 2.45 + sin(t * PI) * 0.75, -4.6)
-
-
 
 
 func _room() -> void:
@@ -295,7 +247,7 @@ func _shelves() -> void:
 		var bc: Color = [Color("8a2a2a"), Color("2a5a8a"), Color("3a7a3a"), Color("7a4a8a")][i]
 		s.box(Vector3(-3.35 + i * 0.13, 3.43, -2.55), Vector3(0.11, 0.55 - i * 0.04, 0.38), bc.lightened(0.1), bc)
 	add_child(s.piece("shelves"))
-	_candles.append(_candle_flame(Vector3(-2.0, 3.78, -2.5)))
+	_candle_flame(Vector3(-2.0, 3.74, -2.5))
 	# On the right: a broom and a barrel
 	var r := Shape.new()
 	r.tube(Vector3(3.3, 0.0, -2.2), Vector3(3.3, 0.85, -2.2), 0.45, 0.48, WOOD, WOOD.lightened(0.1), 12)
@@ -335,189 +287,89 @@ func _bits() -> void:
 
 
 func _candle_flame(at: Vector3) -> MeshInstance3D:
-	var f := Shape.new()
-	f.ball(Vector3(0, 0.08, 0), Vector3(0.05, 0.1, 0.05), Color(1, 0.85, 0.35, 0.9), Color(1, 0.5, 0.1, 0.9), 6, 4)
-	var mi := f.piece("candle", Shape.flame_mat(Color.WHITE, 1.0))
-	mi.position = at
-	add_child(mi)
+	var f := Fire.candle()
+	f.position = at
+	add_child(f)
+	var mi := MeshInstance3D.new()
 	return mi
 
 
+## The fire pit and the iron pot (Blender models), GameCommon's fire under it, and the brew
 func _cauldron() -> void:
-	# The fire pit and the iron pot are Blender models (art/make_models.py); the brew's surface,
-	# the flames and the bubbles are the game's own
 	add_child(Models.make("firepit"))
 	add_child(Models.make("cauldron"))
-	brew_mat = ShaderMaterial.new()
-	brew_mat.shader = preload("res://shaders/brew.gdshader")
-	brew_mat.set_shader_parameter("radius", BREW_R)
-	brew_disc = MeshInstance3D.new()
-	brew_disc.name = "brew"
-	brew_disc.mesh = _brew_mesh()
-	brew_disc.material_override = brew_mat
-	brew_disc.position.y = BREW_LEVEL
-	add_child(brew_disc)
-	# Flames licking up round the belly
-	fire = Node3D.new()
-	fire.name = "fire"
-	add_child(fire)
-	for i in 9:
-		var a := TAU * i / 9.0
-		var f := Shape.new()
-		var hue := Color(0.6, 1.0, 0.35, 0.85) if i % 2 else Color(1.0, 0.8, 0.3, 0.8)
-		f.tube(Vector3(0, 0, 0), Vector3(0, 0.55, 0), 0.16, 0.0, hue, Color(hue.r, hue.g, hue.b, 0.0), 6, false)
-		var m := Shape.flame_mat(Color.WHITE, 1.0)
-		fire_mats.append(m)
-		var mi := f.piece("flame", m)
-		mi.position = Vector3(cos(a) * 0.62, 0.12, sin(a) * 0.58)
-		fire.add_child(mi)
-		flames.append(mi)
-	var glow := Shape.new().disc(Vector3.ZERO, Vector2(1.1, 1.0), Color(0.5, 0.9, 0.3, 0.5), 16, Basis(), Color(0.5, 0.9, 0.3, 0.0))
-	var gm := Shape.flame_mat(Color.WHITE, 0.7)
-	fire_mats.append(gm)
-	var gmi := glow.piece("glow", gm)
-	gmi.position.y = 0.02
-	fire.add_child(gmi)
-	_bubble_mat = Shape.flame_mat(Color("aaffaa"), 0.9)
-	bubbles = _particles("bubbles", 18, _bubble_mat, 0.07)
-	bubbles.position = Vector3(0, BREW_LEVEL, 0)
-	bubbles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	bubbles.emission_sphere_radius = 0.55
-	bubbles.direction = Vector3.UP
-	bubbles.spread = 10.0
-	bubbles.gravity = Vector3(0, 0.2, 0)
-	bubbles.initial_velocity_min = 0.05
-	bubbles.initial_velocity_max = 0.2
-	bubbles.lifetime = 1.0
-	bubbles.scale_amount_min = 0.5
-	bubbles.scale_amount_max = 1.6
-	bubbles.scale_amount_curve = _rise_and_pop()
-	bubbles.emitting = true
-	steam = _particles("steam", 10, Shape.flame_mat(Color("d8ffd0"), 0.12), 0.14)
-	steam.position = Vector3(0, BREW_LEVEL + 0.1, 0)
-	steam.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	steam.emission_sphere_radius = 0.45
-	steam.direction = Vector3.UP
-	steam.gravity = Vector3(0, 0.6, 0)
-	steam.initial_velocity_min = 0.3
-	steam.initial_velocity_max = 0.6
-	steam.lifetime = 2.0
-	steam.scale_amount_min = 0.6
-	steam.scale_amount_max = 1.3
-	steam.scale_amount_curve = _rise_and_pop()
-	steam.emitting = true
-	splash = _particles("splash", 26, Shape.mat(0.4), 0.06)
-	splash.position = Vector3(0, BREW_LEVEL + 0.05, 0)
-	splash.one_shot = true
-	splash.explosiveness = 0.95
-	splash.direction = Vector3.UP
-	splash.spread = 45.0
-	splash.initial_velocity_min = 1.6
-	splash.initial_velocity_max = 2.8
-	splash.gravity = Vector3(0, -7.0, 0)
-	splash.lifetime = 0.8
-	splash.emitting = false
-	sparkle = _particles("sparkle", 40, Shape.flame_mat(Color.WHITE, 1.4), 0.05)
-	sparkle.position = Vector3(0, BREW_LEVEL + 0.2, 0)
-	sparkle.one_shot = true
-	sparkle.explosiveness = 0.85
-	sparkle.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	sparkle.emission_sphere_radius = 0.5
-	sparkle.direction = Vector3.UP
-	sparkle.spread = 70.0
-	sparkle.initial_velocity_min = 0.8
-	sparkle.initial_velocity_max = 2.2
-	sparkle.gravity = Vector3(0, -1.0, 0)
-	sparkle.lifetime = 1.0
-	sparkle.scale_amount_curve = _rise_and_pop()
-	sparkle.emitting = false
-	smoke = _particles("smoke", 20, Shape.mat(0.3), 0.15)
-	smoke.position = Vector3(0, BREW_LEVEL + 0.2, 0)
-	smoke.one_shot = true
-	smoke.explosiveness = 0.8
-	smoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	smoke.emission_sphere_radius = 0.5
-	smoke.direction = Vector3.UP
-	smoke.spread = 40.0
-	smoke.initial_velocity_min = 0.6
-	smoke.initial_velocity_max = 1.4
-	smoke.gravity = Vector3(0, 0.5, 0)
-	smoke.lifetime = 1.6
-	smoke.color = Color("4a4038")
-	smoke.scale_amount_min = 0.6
-	smoke.scale_amount_max = 1.1
-	smoke.scale_amount_curve = _rise_and_pop()
-	smoke.emitting = false
-	_more_particles()
+	# The fire: one in the middle with the light, and tongues round the edge licking up the iron
+	fire = _flame(Vector3(0, 0.12, 0), 0.55, true)
+	for k in 7:
+		var a := lerpf(0.15, PI - 0.15, k / 6.0)
+		var r := 0.82 + 0.06 * sin(k * 2.3)
+		_edge_fires.append(_flame(Vector3(cos(a) * r, 0.08, sin(a) * r * 0.9), 0.32 + 0.1 * sin(k * 1.7), false))
+	brew = Brew.new()
+	brew.name = "brew"
+	brew.position = Vector3(0, BREW_LEVEL, 0)
+	add_child(brew)
 
 
-func _particles(name: String, amount: int, material: Material, size: float) -> CPUParticles3D:
-	var p := CPUParticles3D.new()
-	p.name = name
-	p.amount = amount
-	var ball := SphereMesh.new()
-	ball.radius = size
-	ball.height = size * 2.0
-	ball.radial_segments = 6
-	ball.rings = 3
-	ball.material = material
-	p.mesh = ball
-	p.local_coords = false
-	add_child(p)
-	return p
+func _flame(at: Vector3, size: float, lit: bool) -> Fire:
+	var f := Fire.new()
+	f.size = size
+	f.spread = 0.9
+	f.core = Color(1.0, 1.0, 0.75)
+	f.body = Color(0.55, 1.0, 0.3)
+	f.tip = Color(0.1, 0.45, 0.15)
+	f.light = lit
+	f.light_energy = 2.5
+	f.light_range = 9.0
+	f.embers = lit
+	f.smoke = false
+	f.position = at
+	add_child(f)
+	return f
 
 
-func _rise_and_pop() -> Curve:
-	var c := Curve.new()
-	c.add_point(Vector2(0.0, 0.2))
-	c.add_point(Vector2(0.25, 1.0))
-	c.add_point(Vector2(0.85, 0.9))
-	c.add_point(Vector2(1.0, 0.0))
-	return c
+## Moonlight in through the window behind, cool, catching the customers' shoulders
+func _lights() -> void:
+	var moonlight := DirectionalLight3D.new()
+	moonlight.name = "moonlight"
+	moonlight.light_color = Color(0.5, 0.55, 1.0)
+	moonlight.light_energy = 0.7
+	moonlight.rotation = Vector3(deg_to_rad(-28), deg_to_rad(180 + 15), 0)
+	add_child(moonlight)
+	# A soft fill from where you stand, so the front of things isn't lost in the dark
+	var fill := OmniLight3D.new()
+	fill.name = "fill"
+	fill.position = Vector3(0, 2.4, 2.6)
+	fill.light_color = Color(0.75, 0.6, 0.9)
+	fill.light_energy = 0.7
+	fill.omni_range = 7.0
+	add_child(fill)
 
 
-## The table in front of the pot, everything on it, the bellows by the fire and the stirring stick.
-## Each thing that can be tapped gets a spot: where it is and how big, for picking it on the screen.
-func _table() -> void:
-	var table := Models.make("table")
-	table.position = TABLE
-	table.scale = Vector3(1.0, 1.3, 1.0)
-	add_child(table)
-	# Three rows: the top step (jars 1-4), the lower step (5-8), and the front (wand, book, bottles)
-	# Raised so it shows over the pot's rim: the back step (jars 5-8), the lower step (1-4), the front edge
-	var lift := 1.3
-	var rows_y := [1.0 * lift, 1.18 * lift, 0.82 * lift]
-	var rows_z := [TABLE.z - 0.06, TABLE.z - 0.52, TABLE.z + 0.45]
-	var cols := [-0.78, -0.26, 0.26, 0.78]
+## The shelf curving round behind the pot below the counter, the ingredients along it in an arc;
+## the wand and the empty jars at the ends of the counter; the bellows by the fire, the book by the
+## pot. Each thing that can be tapped gets a spot: where it is and how big, for picking it on screen.
+func _shelf() -> void:
+	var shelf := Models.make("shelf_arc")
+	shelf.rotation.y = PI
+	add_child(shelf)
 	for i in 8:
-		var at := Vector3(TABLE.x + cols[i % 4], rows_y[i / 4], rows_z[i / 4])
+		var a := deg_to_rad(lerpf(-56.0, 56.0, i / 7.0))
+		var at := Vector3(-sin(a) * SHELF_R, SHELF_TOP, -cos(a) * SHELF_R)
 		var holder := Node3D.new()
 		holder.name = "jar%d" % i
 		holder.position = at
+		holder.rotation.y = -a
 		add_child(holder)
 		var full := Models.make(INGREDIENT_MODELS[i])
 		full.name = "full"
-		full.scale = Vector3.ONE * 1.05
 		holder.add_child(full)
 		var empty := Models.make("ing_empty")
 		empty.name = "empty"
-		empty.scale = Vector3.ONE * 1.05
 		holder.add_child(empty)
 		props["jar%d" % i] = holder
-		spots["jar%d" % i] = {"at": at + Vector3(0, 0.18, 0), "r": 0.3}
-	var book := Models.make("book")
-	# The book lies open on the floor to your left, by the fire
-	# The book on the front corner of the table, the bellows on the other
-	book.position = Vector3(TABLE.x - 1.0, rows_y[2], rows_z[2] + 0.05)
-	book.rotation.y = 0.35
-	book.scale = Vector3.ONE * 0.95
-	book.scale = Vector3.ONE * 1.3
-	add_child(book)
-	props["book"] = book
-	spots["book"] = {"at": book.position + Vector3(0, 0.2, 0), "r": 0.32}
+		spots["jar%d" % i] = {"at": at + Vector3(0, 0.18, 0), "r": 0.26}
 	var jar := Models.make("wand_jar")
-	jar.position = Vector3(TABLE.x - 0.6, rows_y[2], rows_z[2])
-	jar.scale = Vector3.ONE * 1.1
+	jar.position = Vector3(-1.05, 1.51, -2.55)
 	add_child(jar)
 	var wand := Models.make("wand")
 	wand.name = "wand"
@@ -526,26 +378,31 @@ func _table() -> void:
 	jar.add_child(wand)
 	_wand = wand
 	props["wand"] = jar
-	spots["wand"] = {"at": jar.position + Vector3(0, 0.35, 0), "r": 0.3}
+	spots["wand"] = {"at": jar.position + Vector3(0, 0.3, 0), "r": 0.3}
 	var rack := Models.make("bottles")
-	rack.position = Vector3(TABLE.x + 0.52, rows_y[2], rows_z[2])
-	rack.scale = Vector3.ONE * 1.0
+	rack.position = Vector3(1.0, 1.51, -2.55)
 	add_child(rack)
 	props["bottle"] = rack
-	spots["bottle"] = {"at": rack.position + Vector3(0, 0.2, 0), "r": 0.38}
-	# The bellows lie by the fire with their nozzle on it
+	spots["bottle"] = {"at": rack.position + Vector3(0, 0.18, 0), "r": 0.36}
+	var book := Models.make("book")
+	book.position = Vector3(-0.92, 0.0, 0.25)
+	book.rotation.y = 0.5
+	book.scale = Vector3.ONE * 1.4
+	add_child(book)
+	props["book"] = book
+	spots["book"] = {"at": book.position + Vector3(0, 0.25, 0), "r": 0.38}
 	var bellows := Node3D.new()
 	bellows.name = "bellows"
-	bellows.position = Vector3(TABLE.x + 0.98, rows_y[2] + 0.05, rows_z[2] + 0.1)
-	var d := Vector3(-0.6, 0, 0.8).normalized()
-	bellows.rotation = Vector3(0, atan2(d.z, -d.x), 0.18)
-	bellows.scale = Vector3.ONE * 1.1
+	bellows.position = Vector3(0.95, 0.14, 0.28)
+	var d := (Vector3(0, 0, 0) - bellows.position).normalized()
+	bellows.rotation = Vector3(0, atan2(d.z, -d.x), 0.2)
+	bellows.scale = Vector3.ONE * 1.3
 	add_child(bellows)
 	bellows.add_child(Models.make("bellows"))
 	_bellows_top = Models.make("bellows_top")
 	bellows.add_child(_bellows_top)
 	props["bellows"] = bellows
-	spots["bellows"] = {"at": bellows.position + Vector3(0, 0.15, 0), "r": 0.5}
+	spots["bellows"] = {"at": bellows.position + Vector3(0, 0.2, 0), "r": 0.45}
 	spots["stir"] = {"at": Vector3(0, CAULDRON_RIM, 0), "r": 0.95}
 	stick = Models.make("stick")
 	stick.name = "stick"
@@ -568,7 +425,7 @@ func show_stock(avail: Array) -> void:
 		holder.get_node("empty").visible = not avail[i]
 
 
-## A thing on the table hops when it's tapped (`shake` wobbles it: not now)
+## A thing hops when it's tapped (`shake` wobbles it: not now)
 func poke(id: String, shake := false) -> void:
 	if not props.has(id):
 		return
@@ -591,9 +448,9 @@ func _animate_props(dt: float) -> void:
 		if t < 0.0:
 			# A shake: -1 counting up to 0
 			t += dt * 2.5
-			node.rotation.y = sin(t * 40.0) * 0.12 * -t
+			node.rotation.x = sin(t * 40.0) * 0.12 * -t
 			if t >= 0.0:
-				node.rotation.y = 0.0
+				node.rotation.x = 0.0
 				_pokes.erase(id)
 				continue
 		else:
@@ -619,21 +476,25 @@ func _animate_stick(dt: float) -> void:
 	var top := dip + (out * 0.55 + Vector3.UP + Vector3(0, 0, 0.15)).normalized() * 1.25
 	stick.global_position = top
 	stick.look_at(dip, out)
+	# The stick drags a little wake round in the brew while it goes
+	if stirring:
+		_wake_t -= dt
+		if _wake_t <= 0.0:
+			_wake_t = 0.08
+			brew.ripple(Vector2(dip.x, dip.z), 0.35)
 
 
-## An ingredient flies from its place on the table into the pot
+## An ingredient thrown from its place on the shelf into the pot (a key, not a finger)
 func toss(which: int, landed: Callable) -> void:
 	var holder: Node3D = props["jar%d" % which]
-	var bit := Models.make(INGREDIENT_MODELS[which])
-	bit.scale = Vector3.ONE * 0.75
+	var bit := Models.make(ONE_MODELS[which])
 	add_child(bit)
 	var from := holder.global_position + Vector3(0, 0.25, 0)
-	var to := Vector3(0, BREW_LEVEL, 0)
+	var to := Vector3(randf_range(-0.2, 0.2), BREW_LEVEL, randf_range(-0.2, 0.2))
 	var tw := create_tween()
 	tw.tween_method(func(k: float) -> void:
-		bit.global_position = from.lerp(to, k) + Vector3(0, sin(k * PI) * 0.9, 0)
-		bit.rotation = Vector3(k * 5.0, k * 3.0, 0)
-		bit.scale = Vector3.ONE * lerpf(0.75, 0.4, k), 0.0, 1.0, 0.42)
+		bit.global_position = from.lerp(to, k) + Vector3(0, sin(k * PI) * 0.7, 0)
+		bit.rotation = Vector3(k * 5.0, k * 3.0, 0), 0.0, 1.0, 0.42)
 	tw.tween_callback(func() -> void:
 		bit.queue_free()
 		landed.call(which, to))
@@ -652,134 +513,100 @@ func _animate_wand(dt: float) -> void:
 		return
 	var jar: Node3D = props["wand"]
 	var home := jar.global_transform * Vector3(0, 0.12, 0)
-	var over := Vector3(0, BREW_LEVEL + 0.9, 0.1)
+	var over := Vector3(0, BREW_LEVEL + 0.8, 0.2)
 	var k := 0.0
-	if _wand_t < 0.25:
-		k = _wand_t / 0.25
-	elif _wand_t < 0.85:
+	if _wand_t < 0.3:
+		k = _wand_t / 0.3
+	elif _wand_t < 0.9:
 		k = 1.0
-	elif _wand_t < 1.1:
-		k = 1.0 - (_wand_t - 0.85) / 0.25
+	elif _wand_t < 1.2:
+		k = 1.0 - (_wand_t - 0.9) / 0.3
 	_wand.global_position = home.lerp(over, smoothstep(0.0, 1.0, k))
 	_wand.rotation = Vector3(0, 0, 0.25 + k * sin(_wand_t * 22.0) * 0.6)
 
 
 # --- the brew coming alive ---
 
-## A disc of rings for the brew's surface, fine enough to ripple
-func _brew_mesh() -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings := 18
-	var seg := 48
-	var pts := []
-	for i in rings + 1:
-		var row := []
-		for j in seg:
-			var a := TAU * j / seg
-			var r := BREW_R * float(i) / rings
-			row.append(Vector3(cos(a) * r, 0, sin(a) * r))
-		pts.append(row)
-	for i in rings:
-		for j in seg:
-			var a: Vector3 = pts[i][j]
-			var b: Vector3 = pts[i][(j + 1) % seg]
-			var c: Vector3 = pts[i + 1][(j + 1) % seg]
-			var d: Vector3 = pts[i + 1][j]
-			for v: Vector3 in [a, c, b, a, d, c]:
-				st.set_normal(Vector3.UP)
-				st.add_vertex(v)
-	return st.commit()
-
-
-## Rings out from where something hit the brew
-func ripple(at: Vector3, strength := 1.0) -> void:
-	var t := Time.get_ticks_msec() / 1000.0
-	_ripples[_next_ripple] = Vector4(at.x, at.z, t, strength)
-	_next_ripple = (_next_ripple + 1) % 4
-	brew_mat.set_shader_parameter("ripples", _ripples)
-
-
-## What happens when something goes in: each ingredient does its own thing (`fx`), bigger the more
-## is already in the pot (`strength`). Specials are what certain pairs do together.
+## What happens when something goes in: a splash where it landed, and then each ingredient does its
+## own thing (`fx`), bigger the more is already in the pot (`strength`). Specials are what certain
+## pairs do together.
 func react(fx: String, col: Color, strength := 1.0, at := Vector3.ZERO) -> void:
 	var k := clampf(strength, 0.6, 2.5)
-	ripple(at, 0.8 * k)
-	_burst(splash, col.lightened(0.25), int(14 * k), 1.6 + 0.6 * k)
-	_last_col = col
+	var p := at - brew.position
+	p.y = 0.0
+	brew.splash(p, 0.7 + 0.2 * k)
 	match fx:
 		"bubbles":
-			_burst(big_bubbles, col.lightened(0.4), int(10 * k))
+			brew.bubble_burst(int(6 * k), 1.8)
 		"spores":
-			_burst(wisps, Color("ff6a5a"), int(10 * k), 0.8)
-			_burst(sparkle, Color("fffbf0"), int(12 * k))
+			brew.puffs(p, int(5 * k), Color(1.0, 0.45, 0.35, 0.7), 0.5, 0.8)
+			brew.sparks(p, int(6 * k), Color("fff4e0"), 1.2)
 		"smoke":
-			_burst(wisps, Color("8a52c9"), int(14 * k), 0.7)
+			brew.puffs(p, int(7 * k), Color(0.55, 0.35, 0.85, 0.7), 0.6, 1.0)
 		"splash":
-			_burst(splash, col.lightened(0.4), int(24 * k), 2.6 + 0.5 * k)
+			brew.splash(p, 1.2 + 0.3 * k)
 		"dark":
-			_burst(wisps, Color("1a1430"), int(16 * k), 0.6)
-			_burst(big_bubbles, Color("3b3a8c"), int(6 * k))
+			brew.puffs(p, int(7 * k), Color(0.1, 0.08, 0.2, 0.8), 0.5, 1.0)
+			brew.bubble_burst(int(4 * k), 1.5)
 		"sparkle":
-			_burst(sparkle, Color("cfe0ff"), int(30 * k))
-			_glow = maxf(_glow, 0.5)
+			brew.sparks(p, int(16 * k), Color("cfe0ff"), 1.6)
+			brew.flash(0.5)
 		"ghost":
-			_burst(wisps, Color("f4f0ff"), int(12 * k), 0.4)
+			brew.puffs(p, int(6 * k), Color(0.95, 0.95, 1.0, 0.6), 0.3, 1.3)
 		"fire":
-			_burst(embers, Color("ffa22e"), int(26 * k), 3.0)
-			_glow = maxf(_glow, 0.6)
+			brew.sparks(p, int(18 * k), Color("ffa22e"), 2.4)
+			brew.flash(0.6)
+			_flare = 1.0
 		# Specials
 		"fireball":
-			_burst(embers, Color("ff7a1a"), 60, 4.5)
-			_burst(wisps, Color("4a3a30"), 20, 1.4)
-			_glow = 1.4
-			ripple(at, 2.5)
+			brew.sparks(p, 48, Color("ff7a1a"), 3.2)
+			brew.puffs(p, 10, Color(0.25, 0.18, 0.12, 0.8), 0.9, 1.4)
+			brew.flash(1.4)
+			brew.splash(p, 2.0)
+			_flare = 1.5
 		"rainbow":
 			for c: Color in [Color("ff5a5a"), Color("ffd84a"), Color("5ae07a"), Color("5ac8ff"), Color("c87aff")]:
-				_burst(sparkle, c, 12)
-			_glow = 1.0
+				brew.sparks(p, 9, c, 1.8)
+			brew.flash(1.0)
 		"geyser":
-			_burst(splash, col.lightened(0.3), 60, 5.0)
-			ripple(at, 2.5)
+			brew.splash(p, 2.4)
+			brew.splash(p, 1.6)
 		"stink":
-			_burst(wisps, Color("8ac83a"), 30, 1.0)
+			brew.puffs(p, 12, Color(0.55, 0.8, 0.25, 0.7), 0.7, 1.2)
 		"zap":
-			_burst(sparkle, col.lightened(0.5), 40)
-			_burst(sparkle, Color("fff27a"), 20)
-			_glow = 1.2
-			ripple(Vector3.ZERO, 1.2)
+			brew.sparks(Vector3.ZERO, 26, brew.look.foam, 1.8)
+			brew.sparks(Vector3.ZERO, 14, Color("fff27a"), 2.2)
+			brew.flash(1.0)
+			brew.ripple(Vector2.ZERO, 1.2)
 
 
-func _burst(p: CPUParticles3D, col: Color, amount := -1, speed := -1.0) -> void:
-	# A copy, so bursts can overlap and each keeps its own colour
-	var b := p.duplicate() as CPUParticles3D
-	b.color = col
-	if amount > 0:
-		b.amount = clampi(amount, 1, 90)
-	if speed > 0.0:
-		b.initial_velocity_min = speed * 0.6
-		b.initial_velocity_max = speed
-	b.one_shot = true
-	b.visible = true
-	add_child(b)
-	b.emitting = true
-	get_tree().create_timer(b.lifetime + 0.5).timeout.connect(b.queue_free)
+func plop(_col: Color) -> void:
+	brew.splash(Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)), 0.8)
+
+
+func zap() -> void:
+	react("zap", brew.look.liquid, 1.0)
+
+
+func poof() -> void:
+	brew.puffs(Vector3.ZERO, 10, Color(0.22, 0.18, 0.15, 0.85), 0.7, 1.2)
+	brew.ripple(Vector2.ZERO, 1.5)
 
 
 # --- carrying ingredients over to the pot ---
 
-## Picks up a handful of ingredient `which` from the table; it follows the finger until dropped
+## Picks one up off the shelf (one eye, one toadstool...); it follows the finger until dropped
 func hold(which: int) -> Node3D:
 	var holder: Node3D = props["jar%d" % which]
-	var bit := Models.make(INGREDIENT_MODELS[which])
-	bit.scale = Vector3.ONE * 0.9
+	var bit := Models.make(ONE_MODELS[which])
+	bit.scale = Vector3.ONE * 1.3
 	add_child(bit)
-	bit.global_position = holder.global_position + Vector3(0, 0.15, 0)
+	bit.global_position = holder.global_position + Vector3(0, 0.2, 0)
 	poke("jar%d" % which)
 	return bit
 
 
-## Moves a held thing toward a point, a little behind, swinging as it goes
+## Moves a held thing toward a point, swinging as it goes
 func carry(bit: Node3D, to: Vector3, dt: float) -> void:
 	var was := bit.global_position
 	bit.global_position = was.lerp(to, minf(1.0, dt * 18.0))
@@ -789,7 +616,7 @@ func carry(bit: Node3D, to: Vector3, dt: float) -> void:
 
 ## Whether a held thing is over the pot's mouth
 func over_pot(at: Vector3) -> bool:
-	return Vector2(at.x, at.z).length() < BREW_R + 0.12
+	return Vector2(at.x, at.z).length() < BREW_R + 0.2
 
 
 ## Lets go: over the pot it drops in (and `landed` is called with where); anywhere else it floats back
@@ -805,60 +632,8 @@ func drop(bit: Node3D, which: int, landed: Callable) -> void:
 			bit.queue_free()
 			landed.call(which, to))
 	else:
-		var home: Vector3 = (props["jar%d" % which] as Node3D).global_position + Vector3(0, 0.15, 0)
+		var home: Vector3 = (props["jar%d" % which] as Node3D).global_position + Vector3(0, 0.2, 0)
 		tw.tween_method(func(k: float) -> void:
 			bit.global_position = from.lerp(home, k) + Vector3(0, sin(k * PI) * 0.3, 0)
-			bit.scale = Vector3.ONE * lerpf(0.9, 0.3, k), 0.0, 1.0, 0.3)
+			bit.scale = Vector3.ONE * lerpf(1.3, 0.4, k), 0.0, 1.0, 0.3)
 		tw.tween_callback(bit.queue_free)
-
-
-func _more_particles() -> void:
-	# Soft coloured wisps that rise and spread
-	wisps = _particles("wisps", 16, Shape.flame_mat(Color.WHITE, 0.32), 0.12)
-	wisps.position = Vector3(0, BREW_LEVEL + 0.15, 0)
-	wisps.explosiveness = 0.7
-	wisps.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	wisps.emission_sphere_radius = 0.45
-	wisps.direction = Vector3.UP
-	wisps.spread = 35.0
-	wisps.gravity = Vector3(0, 0.7, 0)
-	wisps.initial_velocity_min = 0.3
-	wisps.initial_velocity_max = 0.8
-	wisps.damping_min = 0.4
-	wisps.damping_max = 0.8
-	wisps.lifetime = 2.0
-	wisps.scale_amount_min = 0.8
-	wisps.scale_amount_max = 1.5
-	wisps.scale_amount_curve = _rise_and_pop()
-	wisps.emitting = false
-	wisps.visible = false
-	# Embers that shoot up and fall
-	embers = _particles("embers", 30, Shape.flame_mat(Color.WHITE, 1.6), 0.035)
-	embers.position = Vector3(0, BREW_LEVEL + 0.05, 0)
-	embers.explosiveness = 0.9
-	embers.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	embers.emission_sphere_radius = 0.35
-	embers.direction = Vector3.UP
-	embers.spread = 30.0
-	embers.gravity = Vector3(0, -4.0, 0)
-	embers.lifetime = 1.2
-	embers.scale_amount_curve = _rise_and_pop()
-	embers.emitting = false
-	embers.visible = false
-	# Big bubbles that swell up out of the brew and pop
-	big_bubbles = _particles("big_bubbles", 10, Shape.mat(0.5), 0.12)
-	big_bubbles.position = Vector3(0, BREW_LEVEL, 0)
-	big_bubbles.explosiveness = 0.6
-	big_bubbles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	big_bubbles.emission_sphere_radius = 0.5
-	big_bubbles.direction = Vector3.UP
-	big_bubbles.spread = 15.0
-	big_bubbles.gravity = Vector3(0, 0.3, 0)
-	big_bubbles.initial_velocity_min = 0.1
-	big_bubbles.initial_velocity_max = 0.4
-	big_bubbles.lifetime = 1.1
-	big_bubbles.scale_amount_min = 0.7
-	big_bubbles.scale_amount_max = 1.8
-	big_bubbles.scale_amount_curve = _rise_and_pop()
-	big_bubbles.emitting = false
-	big_bubbles.visible = false

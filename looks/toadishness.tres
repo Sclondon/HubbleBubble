@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PotionLook" format=3]
+
+[ext_resource type="Script" path="res://scripts/potion_look.gd" id="1_1p0sm"]
+
+[resource]
+script = ExtResource("1_1p0sm")
+liquid = Color(0.2901961, 0.5411765, 0.16470589, 1)
+deep = Color(0.0627451, 0.16470589, 0.03137255, 1)
+foam = Color(0.65882355, 0.84705883, 0.4392157, 1)
+lines = 0.3
+glints = 0.8
+thickness = 0.85
+swirl = 0.2
+light_colour = Color(0.41568628, 0.6666667, 0.22745098, 1)
+bubbles = 1.6
+bubble_size = 2.0
+bubble_colour = Color(0.65882355, 0.84705883, 0.4392157, 1)
+steam = 1.2
+steam_colour = Color(0.5411765, 0.65882355, 0.41568628, 0.55)
+sparkle_colour = Color(0.65882355, 0.84705883, 0.4392157, 1)
