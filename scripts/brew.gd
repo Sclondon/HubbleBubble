@@ -74,11 +74,19 @@ func _ready() -> void:
 	# (on a layer of its own, so its own glow lights the room, not itself)
 	surface.layers = 2
 	add_child(surface)
+	# The one light in the hut: the potion's own glow, from just over its surface, casting shadows (the
+	# pot's own rim throws everything below it into the dark; the shelves, the ingredients and the
+	# stick throw shadows up the walls). Not on the brew itself, nor on the smoke layer (a shadowed
+	# light there stops the smoke camera drawing at all).
 	_light = OmniLight3D.new()
-	_light.position = Vector3(0, 0.55, 0.15)
+	_light.name = "potion_light"
+	_light.position = Vector3(0, 0.08, 0)
 	_light.omni_range = 9.0
-	_light.omni_attenuation = 1.3
-	_light.light_cull_mask = 0xFFFFF & ~2
+	_light.omni_attenuation = 0.9
+	_light.shadow_enabled = true
+	_light.shadow_bias = 0.05
+	_light.shadow_normal_bias = 1.5
+	_light.light_cull_mask = 0xFFFFF & ~2 & ~4
 	add_child(_light)
 	_bubbles = _multi("bubbles", _dome(), preload("res://shaders/bubble.gdshader"), MAX_BUBBLES)
 	_streamers = Streamers.new()
@@ -108,6 +116,7 @@ func _ready() -> void:
 	_glow_light.omni_attenuation = 0.8
 	_glow_light.light_cull_mask = 0xFFFFF & ~2
 	add_child(_glow_light)
+	_glow_light.visible = false
 	_spot = SpotLight3D.new()
 	_spot.name = "spot"
 	_spot.position = Vector3(0, -0.02, 0.0)
@@ -120,6 +129,7 @@ func _ready() -> void:
 	# (not on the smoke layer: a shadowed light there stops the smoke camera drawing at all)
 	_spot.light_cull_mask = 0xFFFFF & ~2 & ~4
 	add_child(_spot)
+	_spot.visible = false
 	_sparks = _multi("sparks", _card(), preload("res://shaders/spark.gdshader"), MAX_SPARKS)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
@@ -215,7 +225,7 @@ func _process(dt: float) -> void:
 	_tend_floaters(dt)
 	var flick := 0.88 + 0.12 * sin(_clock * 7.3) * sin(_clock * 3.1 + 1.0)
 	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
-	_light.light_energy = (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
+	_light.light_energy = 2.2 * (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
 	_glow_light.light_color = _light.light_color
 	_spot.light_color = _light.light_color
 	_spot.light_energy = look.light_energy * (1.6 + heat * 1.6) * (0.4 + look.glow) * flick * (1.0 - murk * 0.6) + _flash * 4.0

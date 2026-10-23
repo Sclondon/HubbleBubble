@@ -268,7 +268,7 @@ func _atmosphere() -> Environment:
 	e.background_mode = Environment.BG_COLOR
 	e.background_color = Color(0.03, 0.02, 0.05)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.15, 0.12, 0.22)
+	e.ambient_light_color = Color(0.05, 0.045, 0.08)
 	e.ambient_light_energy = 1.0
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.tonemap_exposure = 1.45

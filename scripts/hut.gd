@@ -32,6 +32,9 @@ const COUNTER_HOLE := Rect2(-1.1, 1.45, 2.2, 2.15)
 const SWAMP_HOLE := Rect2(-2.4, 1.9, 0.9, 1.2)
 const DOOR_HOLE := Rect2(1.42, 0.0, 1.0, 2.75)
 const WALL_Z := -3.0
+## The round wall: its middle (on the z axis) and how far out it is
+const ROOM_Z := 0.25
+const ROOM_R := 3.35
 ## Where the four ingredients on the hung shelves either side of the pot stand
 const SIDE_SPOTS := [Vector3(-1.32, 2.95, -1.7), Vector3(-1.32, 2.35, -1.7), Vector3(1.32, 2.95, -1.7), Vector3(1.32, 2.35, -1.7)]
 const INGREDIENT_MODELS := ["ing_eye", "ing_shroom", "ing_wing", "ing_leg", "ing_spider", "ing_petal", "ing_pepper", "ing_scale"]
@@ -236,48 +239,53 @@ func _room() -> void:
 		var shade := PLANK.lerp(PLANK_D, _rng.randf_range(0.0, 0.45))
 		floor_s.box(Vector3(x + 0.5, -0.05, 0.5), Vector3(0.96, 0.1, 9.0), shade, shade.darkened(0.3))
 	add_child(floor_s.piece("floor"))
-	# The back wall of uneven stones, with its three holes, dark mortar behind
-	var wall := Shape.new()
-	var mortar := Shape.new()
-	var holes := [COUNTER_HOLE]
-	for row in 12:
-		var y := row * 0.5
-		var x := -4.6 + (0.45 if row % 2 else 0.0)
-		while x < 4.6:
-			var w := _rng.randf_range(0.6, 1.0)
-			var centre := Vector2(x + w * 0.5, y + 0.25)
-			var cut := false
-			for h: Rect2 in holes:
-				if h.grow(0.12).has_point(centre):
-					cut = true
-			if not cut:
-				var shade := STONE.lerp(STONE_D, _rng.randf_range(0.0, 0.55))
-				wall.box(Vector3(centre.x, centre.y, WALL_Z + _rng.randf_range(-0.04, 0.04)), Vector3(w - 0.06, 0.44, 0.3), shade.lightened(0.08), shade)
-			x += w
-	for row in 24:
-		for col in 38:
-			var c := Vector2(-4.75 + col * 0.25 + 0.125, row * 0.25 + 0.125)
-			var cut := false
-			for h: Rect2 in holes:
-				if h.grow(0.02).has_point(c):
-					cut = true
-			if not cut:
-				mortar.box(Vector3(c.x, c.y, WALL_Z - 0.12), Vector3(0.26, 0.26, 0.04), STONE_D.darkened(0.5), STONE_D.darkened(0.5))
-	add_child(wall.piece("wall"))
-	add_child(mortar.piece("mortar"))
-	# Side walls, and beams overhead
-	for sgn: float in [-1.0, 1.0]:
-		var side := Shape.new()
-		for row in 12:
-			for k in 8:
-				var shade := STONE.lerp(STONE_D, _rng.randf_range(0.2, 0.8))
-				side.box(Vector3(sgn * 4.6, row * 0.5 + 0.25, -2.6 + k * 1.0 + (0.5 if row % 2 else 0.0)), Vector3(0.3, 0.44, 0.94), shade, shade.darkened(0.15))
-		add_child(side.piece("side"))
+	# The round stone wall, the counter window cut through it at the back
+	var wall := MeshInstance3D.new()
+	wall.name = "wall"
+	wall.mesh = _round_wall()
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/stone_wall.gdshader")
+	wall.material_override = m
+	add_child(wall)
+	# Beams overhead, across the round
 	var beams := Shape.new()
 	for i in 4:
-		beams.box(Vector3(0, 4.6, -2.4 + i * 1.6), Vector3(9.4, 0.3, 0.3), WOOD_D, WOOD_D.darkened(0.3))
-	beams.box(Vector3(0, 4.3, -2.75), Vector3(9.4, 0.25, 0.25), WOOD, WOOD_D)
+		beams.box(Vector3(0, 4.6, -2.4 + i * 1.6), Vector3(2.0 * sqrt(maxf(0.1, ROOM_R * ROOM_R - pow(-2.4 + i * 1.6 - ROOM_Z, 2.0))), 0.3, 0.3), WOOD_D, WOOD_D.darkened(0.3))
+	beams.box(Vector3(0, 4.3, -2.75), Vector3(2.6, 0.25, 0.25), WOOD, WOOD_D)
 	add_child(beams.piece("beams"))
+
+
+## The hut's wall, a ring of stone round the room (a hole through it for the counter window), its
+## UVs metres round and metres up for the stone shader
+func _round_wall() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var seg := 72
+	var rows := 24
+	var height := 6.0
+	var a0 := deg_to_rad(-140.0)
+	var a1 := deg_to_rad(140.0)
+	var at := func(a: float, y: float) -> Vector3:
+		return Vector3(sin(a) * ROOM_R, y, ROOM_Z - cos(a) * ROOM_R)
+	for i in seg:
+		for j in rows:
+			var ua := lerpf(a0, a1, float(i) / seg)
+			var ub := lerpf(a0, a1, float(i + 1) / seg)
+			var ya := height * j / rows
+			var yb := height * (j + 1) / rows
+			var mid: Vector3 = at.call((ua + ub) * 0.5, (ya + yb) * 0.5)
+			if COUNTER_HOLE.has_point(Vector2(mid.x, mid.y)):
+				continue
+			var q := [[ua, ya], [ub, ya], [ub, yb], [ua, yb]]
+			for k: int in [0, 2, 1, 0, 3, 2]:
+				var a: float = q[k][0]
+				var y: float = q[k][1]
+				st.set_uv(Vector2(a * ROOM_R, y))
+				# (facing in, toward the middle)
+				st.set_normal(Vector3(-sin(a), 0, cos(a)))
+				st.add_vertex(at.call(a, y))
+	st.generate_tangents()
+	return st.commit()
 
 
 ## The serving counter in the middle of the back wall, and its shutters
@@ -396,7 +404,7 @@ func _bits() -> void:
 	# Herbs and garlic hanging off the beams
 	for i in 9:
 		var x := -4.0 + i * 1.0 + _rng.randf_range(-0.2, 0.2)
-		if absf(x) < 1.3:
+		if absf(x) < 1.3 or absf(x) > 2.3:
 			continue
 		var zz := -2.4 + _rng.randf_range(-0.2, 0.9)
 		var drop := _rng.randf_range(0.5, 1.0)
@@ -408,43 +416,13 @@ func _bits() -> void:
 		else:
 			s.ball(Vector3(x, 4.5 - drop - 0.12, zz), Vector3(0.14, 0.13, 0.14), Color("f4ecd8"), Color("c8b898"), 8, 5)
 			s.ball(Vector3(x + 0.15, 4.5 - drop - 0.22, zz), Vector3(0.12, 0.11, 0.12), Color("f4ecd8"), Color("c8b898"), 8, 5)
-	# A shelf over the back window: a skull with a candle on it, books, jars
-	var sy := SWAMP_HOLE.end.y + 0.45
-	var sx := SWAMP_HOLE.get_center().x
-	s.box(Vector3(sx, sy, WALL_Z + 0.3), Vector3(1.4, 0.08, 0.45), WOOD.lightened(0.05), WOOD_D)
-	s.ball(Vector3(sx - 0.3, sy + 0.18, WALL_Z + 0.32), Vector3(0.15, 0.13, 0.14), Color("f2ead2"), Color("c8bc98"), 10, 6)
-	s.ball(Vector3(sx - 0.35, sy + 0.18, WALL_Z + 0.45), Vector3(0.035, 0.045, 0.02), Color("201820"), null, 6, 4)
-	s.ball(Vector3(sx - 0.25, sy + 0.18, WALL_Z + 0.45), Vector3(0.035, 0.045, 0.02), Color("201820"), null, 6, 4)
-	s.tube(Vector3(sx - 0.3, sy + 0.3, WALL_Z + 0.32), Vector3(sx - 0.3, sy + 0.5, WALL_Z + 0.32), 0.045, 0.045, Color("f4ecd0"))
-	for i in 3:
-		var bc: Color = [Color("8a2a2a"), Color("2a5a8a"), Color("7a4a8a")][i]
-		s.box(Vector3(sx + 0.1 + i * 0.12, sy + 0.24, WALL_Z + 0.3), Vector3(0.1, 0.42 - i * 0.05, 0.32), bc.lightened(0.1), bc)
-	s.tube(Vector3(sx + 0.52, sy + 0.04, WALL_Z + 0.3), Vector3(sx + 0.52, sy + 0.3, WALL_Z + 0.3), 0.08, 0.07, Color("5fd6c4"), Color("8ae8d8"), 8)
-	# Jars on shelves along the side walls (for wide screens)
-	var jar_cols := [Color("e8473a"), Color("5fd6c4"), Color("8a52c9"), Color("86d84a"), Color("ffa22e"), Color("a8c8ff"), Color("ffc4e4"), Color("f4e04a")]
-	for sgn: float in [-1.0, 1.0]:
-		for row in 3:
-			var y := 1.3 + row * 0.95
-			s.box(Vector3(sgn * 4.25, y, -1.2), Vector3(0.5, 0.1, 2.6), WOOD.lightened(0.05), WOOD_D)
-			var zz := -2.4
-			while zz < 0.0:
-				var col: Color = jar_cols[_rng.randi() % jar_cols.size()]
-				var h := _rng.randf_range(0.25, 0.48)
-				var rr := _rng.randf_range(0.1, 0.16)
-				zz += rr + 0.03
-				s.tube(Vector3(sgn * 4.2, y + 0.05, zz), Vector3(sgn * 4.2, y + 0.05 + h, zz), rr, rr * 0.9, col.darkened(0.2), col.lightened(0.2), 8)
-				s.tube(Vector3(sgn * 4.2, y + 0.05 + h, zz), Vector3(sgn * 4.2, y + 0.12 + h, zz), rr * 0.55, rr * 0.55, Color("c89a5a"), null, 6)
-				zz += rr + 0.05
 	# Cobwebs in the top corners
 	for sgn: float in [-1.0, 1.0]:
-		var corner := Vector3(sgn * 4.4, 4.45, -2.85)
+		var corner := Vector3(sgn * 2.2, 4.45, -2.2)
 		for k in 5:
 			var a := PI * 0.5 + sgn * (PI * 0.5) + (-sgn) * k * (PI * 0.5) / 4.0
 			s.tube(corner, corner + Vector3(cos(a) * -1.0, -absf(sin(a)) * 1.0, 0.05), 0.008, 0.008, Color("d8d8e8"), null, 3)
 	add_child(s.piece("bits"))
-	var candle := Fire.candle()
-	candle.position = Vector3(sx - 0.3, sy + 0.52, WALL_Z + 0.32)
-	add_child(candle)
 
 
 ## The fire pit and the pot (Blender models), the fire under it, and the brew
@@ -464,7 +442,8 @@ func _cauldron() -> void:
 	brew.position = Vector3(0, BREW_LEVEL, 0)
 	_pot.add_child(brew)
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
-	var thermo := Models.make("thermometer")
+	# (a faint glow of its own, so the dial reads even in the rim's shadow)
+	var thermo := Models.make("thermometer", Shape.mat(0.45))
 	thermo.name = "thermometer"
 	thermo.position = Vector3(-0.78, 1.6, 0.42)
 	thermo.scale = Vector3.ONE * 1.5
@@ -472,9 +451,6 @@ func _cauldron() -> void:
 	_pot.add_child(thermo)
 	_needle = Models.make("thermometer_needle")
 	thermo.add_child(_needle)
-	# Drawn sharp over the soft N64 picture (Shop.SMOKE_LAYER), so it can be read
-	for mi: MeshInstance3D in thermo.find_children("*", "MeshInstance3D", true, false):
-		mi.layers = 4
 
 
 ## Moonlight in through the window behind, cool, catching the customers' shoulders
@@ -485,6 +461,8 @@ func _lights() -> void:
 	moonlight.light_energy = 0.9
 	moonlight.rotation = Vector3(deg_to_rad(-28), deg_to_rad(180 + 15), 0)
 	add_child(moonlight)
+	# (the potion is the only light now)
+	moonlight.visible = false
 	# A soft fill from where you stand, so the front of things isn't lost in the dark
 	var fill := OmniLight3D.new()
 	fill.name = "fill"
@@ -494,6 +472,7 @@ func _lights() -> void:
 	fill.visible = false
 	fill.omni_range = 7.0
 	add_child(fill)
+	fill.visible = false
 
 
 ## The shelf curving round behind the pot below the counter, the ingredients along it in an arc;
@@ -617,13 +596,6 @@ func _floating_book() -> Node3D:
 		# Drawn sharp at full size, over the soft N64 picture, so it can be read
 		page.layers = 4
 		holder.add_child(page)
-	# A little glow under it, as if it's held up by something
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.8, 0.7, 1.0)
-	glow.light_energy = 0.8
-	glow.omni_range = 1.4
-	glow.position = Vector3(0, -0.3, 0.3)
-	b.add_child(glow)
 	return b
 
 

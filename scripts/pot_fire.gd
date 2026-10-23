@@ -64,6 +64,8 @@ func _ready() -> void:
 	_light.omni_range = 8.0
 	_light.omni_attenuation = 1.2
 	add_child(_light)
+	# (the potion is the only light in the hut)
+	_light.visible = false
 	_sparks = CPUParticles3D.new()
 	var dot := QuadMesh.new()
 	dot.size = Vector2(0.03, 0.03)
