@@ -46,6 +46,7 @@ var _haze: MultiMeshInstance3D
 var _haze_cards: Array[Dictionary] = []
 var _tendril_due := 0.0
 var _glow_light: OmniLight3D
+var _rays: ShaderMaterial
 var _spot: SpotLight3D
 var _waves: Waves
 var _sparks: MultiMeshInstance3D
@@ -93,6 +94,24 @@ func _ready() -> void:
 	_light.shadow_normal_bias = 1.5
 	_light.light_cull_mask = 0xFFFFF & ~2 & ~4
 	add_child(_light)
+	# God rays: shafts of the potion's light standing up out of the pot into the dark
+	var cone := MeshInstance3D.new()
+	cone.name = "god_rays"
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.9
+	cm.bottom_radius = 0.72
+	cm.height = 3.6
+	cm.cap_top = false
+	cm.cap_bottom = false
+	cm.radial_segments = 32
+	cm.rings = 1
+	cone.mesh = cm
+	cone.position = Vector3(0, 1.8, 0)
+	_rays = ShaderMaterial.new()
+	_rays.shader = preload("res://shaders/god_rays.gdshader")
+	cone.material_override = _rays
+	cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(cone)
 	_bubbles = _multi("bubbles", _dome(), preload("res://shaders/bubble.gdshader"), MAX_BUBBLES)
 	_streamers = Streamers.new()
 	_streamers.name = "streamers"
@@ -314,10 +333,15 @@ func _process(dt: float) -> void:
 		var r := sqrt(randf()) * 0.65
 		_waves.push(Vector2(cos(a), sin(a)) * r, -0.004 * (0.5 + boil), 0.04)
 	_tend_floaters(dt)
-	var flick := 0.88 + 0.12 * sin(_clock * 7.3) * sin(_clock * 3.1 + 1.0)
+	# The potion's light flickers like a living thing (slow swells, a quicker shiver, a stutter now and
+	# then) and sways about over the surface, so the shadows it throws creep and shift
+	var flick := 0.8 + 0.1 * sin(_clock * 2.3) + 0.07 * sin(_clock * 6.7 + 1.0) + 0.05 * sin(_clock * 15.3) - 0.08 * maxf(0.0, sin(_clock * 0.9) * sin(_clock * 11.0))
+	_light.position = Vector3(sin(_clock * 0.8) * 0.12 + sin(_clock * 2.1) * 0.04, 0.42 + sin(_clock * 1.3) * 0.06, 0.1 + cos(_clock * 0.7) * 0.1)
 	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
 	_light.light_energy = 2.2 * (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
 	_glow_light.light_color = _light.light_color
+	_rays.set_shader_parameter("tint", look.light_colour)
+	_rays.set_shader_parameter("strength", clampf((0.15 + look.glow * 0.5) * (0.6 + heat * 0.8) * (1.0 - murk * 0.8) * flick + _flash * 0.4, 0.0, 1.2))
 	_spot.light_color = _light.light_color
 	_spot.light_energy = look.light_energy * (1.6 + heat * 1.6) * (0.4 + look.glow) * flick * (1.0 - murk * 0.6) + _flash * 4.0
 	_glow_light.light_energy = (look.light_energy * (0.5 + heat * 0.8) * (0.3 + look.glow) * flick * (1.0 - murk * 0.7) + _flash * 1.5) * 0.35
@@ -440,6 +464,11 @@ func float_in(model: String, at: Vector3) -> void:
 			"rot": Basis(Vector3(randf(), randf(), randf()).normalized(), randf_range(0.0, PI)), "spin": Vector3(randf_range(-6, 6), randf_range(-3, 3), randf_range(-6, 6)),
 			"pts": pts, "size": maxf(size.x, maxf(size.y, size.z)), "buoy": BUOY.get(model, 1.9), "phase": randf() * TAU, "gone": -1.0})
 	node.position = Vector3(p.x, 0.05, p.y)
+
+
+## How bright its light is now (0 to about 1): for the little lights on the shelf to follow
+func light_now() -> float:
+	return clampf(_light.light_energy / 6.0, 0.15, 1.2)
 
 
 ## How thick it is, 0 to 1: every brew is a gloopy one, thicker still if its look says so

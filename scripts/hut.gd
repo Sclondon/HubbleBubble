@@ -75,6 +75,7 @@ var _night_t := 0.0
 var _pot: Node3D
 var _needle: Node3D
 var _thermo: Node3D
+var _item_spots: Array[SpotLight3D] = []
 var _book: Node3D
 var _book_home := Vector3.ZERO
 var _book_scale := 1.0
@@ -106,6 +107,9 @@ func _process(dt: float) -> void:
 	fire.intensity = 0.6 + h * 1.3 + _flare * 0.6
 	fire.light_energy = 2.0 + h * 3.5 + _flare * 2.0
 	brew.heat = h
+	for sp in _item_spots:
+		sp.light_color = brew.look.light_colour.lerp(Color(1.0, 0.9, 0.75), 0.35)
+		sp.light_energy = 1.4 * brew.light_now()
 	var t := Time.get_ticks_msec() / 1000.0
 	# The thermometer's needle swings to the heat (a little behind, quivering when it's hot)
 	var want := deg_to_rad(-135.0 + 270.0 * clampf(heat, 0.0, 100.0) / 100.0)
@@ -504,6 +508,18 @@ func _shelf() -> void:
 		empty.name = "empty"
 		holder.add_child(empty)
 		props["jar%d" % i] = holder
+		# A soft little light on it from above, in the potion's colour (see _process)
+		var spot := SpotLight3D.new()
+		spot.position = Vector3(0, 0.9, 0.35)
+		spot.rotation = Vector3(-PI * 0.5 + 0.35, 0, 0)
+		spot.spot_angle = 22.0
+		spot.spot_range = 1.4
+		spot.spot_attenuation = 1.2
+		spot.light_energy = 0.0
+		spot.shadow_enabled = false
+		spot.light_cull_mask = 0xFFFFF & ~2 & ~4
+		holder.add_child(spot)
+		_item_spots.append(spot)
 		spots["jar%d" % i] = {"at": at + Vector3(0, 0.18, 0), "r": 0.26}
 	add_child(hung.piece("side_shelves"))
 	var jar := Models.make("wand_jar")

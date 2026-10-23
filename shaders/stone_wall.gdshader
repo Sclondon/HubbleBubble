@@ -50,10 +50,13 @@ vec2 stones(vec2 uv) {
 	return vec2(crown * (0.75 + 0.25 * grain) + grain * 0.12 * crown, hash(vec2(col, row)));
 }
 
+// Texels per metre: the stone is drawn as a small texture would be, in square pixels
+uniform float texels = 40.0;
+
 void fragment() {
-	vec2 uv = UV;
+	vec2 uv = (floor(UV * texels) + 0.5) / texels;
 	vec2 st = stones(uv);
-	float e = 0.008;
+	float e = 1.0 / texels;
 	float hx = stones(uv + vec2(e, 0.0)).x - st.x;
 	float hy = stones(uv + vec2(0.0, e)).x - st.x;
 	NORMAL_MAP = normalize(vec3(-hx / e * 0.06 * bump, -hy / e * 0.06 * bump, 1.0)) * 0.5 + 0.5;
@@ -62,6 +65,7 @@ void fragment() {
 	c *= 0.85 + 0.3 * vnoise(uv * 3.0 + shade * 10.0);
 	c = mix(mortar, c, smoothstep(0.05, 0.35, st.x));
 	ALBEDO = c;
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.15;
+	// a little damp sheen on the stones (none in the mortar)
+	ROUGHNESS = mix(0.95, 0.45, smoothstep(0.3, 0.8, st.x));
+	SPECULAR = 0.45;
 }

@@ -634,6 +634,9 @@ func _process(dt: float) -> void:
 		# and the bellows at the lower right, by the fire
 		var bp := camera.project_position(Vector2(view.size) * Vector2(0.84, 0.83), 2.4)
 		hut.props["bellows"].position = bp
+		# its nozzle turned on the fire
+		var to_fire := Vector3(0, 0.15, 0) - bp
+		hut.props["bellows"].rotation = Vector3(0, atan2(to_fire.z, -to_fire.x), clampf(atan2(-to_fire.y, Vector2(to_fire.x, to_fire.z).length()), -0.6, 0.6))
 		hut.spots["bellows"].at = bp + Vector3(0, 0.12, 0)
 		hut.spots["bellows"].r = 0.28
 	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
@@ -968,6 +971,8 @@ func pump() -> void:
 	heat = minf(100.0, heat + PUMP)
 	Sfx.play("puff", randf_range(0.9, 1.1), -3.0)
 	hut.squeeze()
+	# the puff goes into the fire
+	hut.fire.blow(hut.props["bellows"].global_position)
 	hut.poke("bellows")
 
 

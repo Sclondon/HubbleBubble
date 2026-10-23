@@ -106,7 +106,7 @@ func _run() -> void:
 		return
 	if only == "fire":
 		# Low by the fire, the pot and the brew out of the way
-		main.hut.get_node("brew").visible = false
+		main.hut.get_node("pot").visible = false
 		for c in main.hut.get_children():
 			if c.name.begins_with("cauldron") or (c is Node3D and c.scene_file_path.ends_with("cauldron.glb")):
 				c.visible = false
