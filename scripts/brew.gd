@@ -337,7 +337,7 @@ func _process(dt: float) -> void:
 	# then) and sways about over the surface, so the shadows it throws creep and shift
 	var flick := 0.8 + 0.1 * sin(_clock * 2.3) + 0.07 * sin(_clock * 6.7 + 1.0) + 0.05 * sin(_clock * 15.3) - 0.08 * maxf(0.0, sin(_clock * 0.9) * sin(_clock * 11.0))
 	_light.position = Vector3(sin(_clock * 0.8) * 0.12 + sin(_clock * 2.1) * 0.04, 0.42 + sin(_clock * 1.3) * 0.06, 0.1 + cos(_clock * 0.7) * 0.1)
-	_light.light_color = look.light_colour.lerp(Color(0.5, 0.4, 0.25), murk)
+	_light.light_color = _saturate(look.light_colour, 1.5).lerp(Color(0.5, 0.4, 0.25), murk)
 	_light.light_energy = 2.2 * (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
 	_glow_light.light_color = _light.light_color
 	_rays.set_shader_parameter("tint", look.light_colour)
@@ -466,6 +466,32 @@ func float_in(model: String, at: Vector3) -> void:
 	node.position = Vector3(p.x, 0.05, p.y)
 
 
+## A look with its colours pushed richer (the brews read strongly in the dark)
+static func _vivid(l: PotionLook) -> PotionLook:
+	var v: PotionLook = l.duplicate()
+	v.liquid = _saturate(l.liquid, 1.6)
+	v.deep = _saturate(l.deep, 1.6)
+	v.foam = _saturate(l.foam, 1.3)
+	v.light_colour = _saturate(l.light_colour, 1.5)
+	v.bubble_colour = _saturate(l.bubble_colour, 1.4)
+	return v
+
+
+static func _saturate(c: Color, k: float) -> Color:
+	var o := c
+	o.s = clampf(c.s * k + (0.15 if c.s > 0.05 else 0.0), 0.0, 1.0)
+	return o
+
+
+## One drop of the brew falling out of the tap (a point local to the surface)
+func pour_drop(at: Vector3) -> void:
+	if randf() > 0.6:
+		return
+	if _drop_list.size() >= 48:
+		_drop_list.remove_at(0)
+	_drop_list.append({"at": at, "vel": Vector3(randf_range(-0.05, 0.05), -0.2, 0.25), "col": look.liquid, "size": randf_range(0.018, 0.03), "kind": "blob", "t": 0.0, "spin": 0.0})
+
+
 ## How bright its light is now (0 to about 1): for the little lights on the shelf to follow
 func light_now() -> float:
 	return clampf(_light.light_energy / 6.0, 0.15, 1.2)
@@ -496,7 +522,7 @@ func surface_at(p: Vector2) -> float:
 	var boil := clampf(heat * 1.3 - 0.2, 0.0, 1.0)
 	var a := 0.02 + 0.045 * boil
 	var t := _clock
-	var h := a * (sin(p.dot(Vector2(0.96, 0.28)) * 9.0 + t * 2.1 * slow) + 0.6 * sin(p.dot(Vector2(-0.37, 0.93)) * 13.0 - t * 2.7 * slow) + 0.35 * sin(p.dot(Vector2(0.66, -0.75)) * 19.0 + t * 3.4 * slow))
+	var h := 0.028 * sin(p.dot(Vector2(0.6, 0.8)) * 4.2 - t * 1.3 * slow) + a * (sin(p.dot(Vector2(0.96, 0.28)) * 9.0 + t * 2.1 * slow) + 0.6 * sin(p.dot(Vector2(-0.37, 0.93)) * 13.0 - t * 2.7 * slow) + 0.35 * sin(p.dot(Vector2(0.66, -0.75)) * 19.0 + t * 3.4 * slow))
 	var rr := p.length() / RADIUS
 	return h + _waves.height_at(p) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5)
 
@@ -758,6 +784,7 @@ func _tend_sparks(dt: float) -> void:
 # --- making it ---
 
 func _apply(l: PotionLook) -> void:
+	l = _vivid(l)
 	_mat.set_shader_parameter("liquid", l.liquid)
 	_mat.set_shader_parameter("deep", l.deep)
 	_mat.set_shader_parameter("foam", l.foam)

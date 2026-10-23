@@ -108,8 +108,11 @@ vec3 swell(vec2 p, float t) {
 	float p1 = dot(p, d1) * 9.0 + t * 2.1 * slow;
 	float p2 = dot(p, d2) * 13.0 - t * 2.7 * slow;
 	float p3 = dot(p, d3) * 19.0 + t * 3.4 * slow;
-	float h = a * (sin(p1) + 0.6 * sin(p2) + 0.35 * sin(p3));
-	vec2 g = a * (cos(p1) * 9.0 * d1 + 0.6 * cos(p2) * 13.0 * d2 + 0.35 * cos(p3) * 19.0 * d3);
+	// and a big steady roll under it all
+	vec2 d0 = vec2(0.6, 0.8);
+	float p0 = dot(p, d0) * 4.2 - t * 1.3 * slow;
+	float h = 0.028 * sin(p0) + a * (sin(p1) + 0.6 * sin(p2) + 0.35 * sin(p3));
+	vec2 g = 0.028 * cos(p0) * 4.2 * d0 + a * (cos(p1) * 9.0 * d1 + 0.6 * cos(p2) * 13.0 * d2 + 0.35 * cos(p3) * 19.0 * d3);
 	return vec3(h, g);
 }
 

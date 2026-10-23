@@ -323,6 +323,8 @@ func tap(id: String) -> void:
 	match id:
 		"shutters":
 			toggle_shop()
+		"tap":
+			drain()
 		"swamp_window":
 			visit_swamp()
 		"balcony":
@@ -1109,6 +1111,17 @@ func _record(step: Dictionary) -> void:
 	var r := Lore.resolve(brew)
 	hut.set_brew(r.colour, false, r.effect if r.effect != "nothing" else "")
 	hud.tick_step(brew.size() - 1)
+
+
+## Opens the tap at the foot of the pot: the brew pours out, and the pot starts again
+func drain() -> void:
+	if not _brewing():
+		return
+	hut.pour()
+	Sfx.play("slosh", 0.7)
+	if not brew.is_empty():
+		hut.fresh()
+		_reset_brew()
 
 
 ## Tips the pot out to start again

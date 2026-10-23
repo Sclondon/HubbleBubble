@@ -32,6 +32,8 @@ const COUNTER_HOLE := Rect2(-1.1, 1.45, 2.2, 2.15)
 const SWAMP_HOLE := Rect2(-2.4, 1.9, 0.9, 1.2)
 const DOOR_HOLE := Rect2(1.42, 0.0, 1.0, 2.75)
 const WALL_Z := -3.0
+## Where the drain tap sits on the pot
+const TAP_AT := Vector3(-0.55, 0.62, 0.8)
 ## How long the stirring stick is, as a share of its model
 const STICK_SCALE := 0.62
 ## The round wall: its middle (on the z axis) and how far out it is
@@ -76,6 +78,12 @@ var _pot: Node3D
 var _needle: Node3D
 var _thermo: Node3D
 var _item_spots: Array[SpotLight3D] = []
+var _fog: MultiMesh
+var _fog_list: Array[Dictionary] = []
+var _dust: MultiMesh
+var _dust_list: Array[Dictionary] = []
+var _tap_handle: Node3D
+var _pour := 0.0
 var _book: Node3D
 var _book_home := Vector3.ZERO
 var _book_scale := 1.0
@@ -92,6 +100,7 @@ func _ready() -> void:
 	_cauldron()
 	_shelf()
 	_lights()
+	_air()
 	_set_shutters(0.0)
 
 
@@ -99,6 +108,8 @@ func _process(dt: float) -> void:
 	_animate_props(dt)
 	_animate_stick(dt)
 	_animate_wand(dt)
+	_animate_air(dt)
+	spots["tap"].at = _pot.global_transform * TAP_AT
 	if not is_equal_approx(shutters, shutters_to):
 		_set_shutters(move_toward(shutters, shutters_to, dt * 2.2))
 	# The fire leaps with the heat (and flares when something fiery goes in)
@@ -439,6 +450,24 @@ func _cauldron() -> void:
 	brew.name = "brew"
 	brew.position = Vector3(0, BREW_LEVEL, 0)
 	_pot.add_child(brew)
+	# A brass drain tap low on the front left of the belly, to let the brew out
+	var tap := Node3D.new()
+	tap.name = "tap"
+	tap.position = TAP_AT
+	tap.rotation.y = 0.6
+	_pot.add_child(tap)
+	var body := Shape.new()
+	body.tube(Vector3(0, 0, -0.08), Vector3(0, 0, 0.1), 0.05, 0.045, Color("c8902a"), Color("8a5a1a"), 8)
+	body.tube(Vector3(0, 0, 0.1), Vector3(0, -0.08, 0.13), 0.04, 0.032, Color("c8902a"), Color("8a5a1a"), 8)
+	tap.add_child(body.piece("tap_body"))
+	_tap_handle = Node3D.new()
+	_tap_handle.position = Vector3(0, 0.06, 0.03)
+	tap.add_child(_tap_handle)
+	var handle := Shape.new()
+	handle.tube(Vector3(0, 0, 0), Vector3(0, 0.07, 0), 0.015, 0.015, Color("8a5a1a"), null, 6)
+	handle.box(Vector3(0, 0.08, 0), Vector3(0.16, 0.03, 0.03), Color("e8b040"), Color("a87a2a"))
+	_tap_handle.add_child(handle.piece("tap_handle"))
+	spots["tap"] = {"at": Vector3.ZERO, "r": 0.2}
 	# The thermometer clipped to the rim at the front left, its dial turned up to you
 	# (a faint glow of its own, so the dial reads even in the rim's shadow)
 	var thermo := Models.make("thermometer")
@@ -449,6 +478,86 @@ func _cauldron() -> void:
 	_pot.add_child(thermo)
 	_needle = Models.make("thermometer_needle")
 	thermo.add_child(_needle)
+
+
+## The air in the hut: banks of fog billowing slowly round the room, and motes of dust drifting
+## through it, both lit by the potion (and the fire), so its light shows in the air
+func _air() -> void:
+	_fog = MultiMesh.new()
+	_fog.transform_format = MultiMesh.TRANSFORM_3D
+	var q := QuadMesh.new()
+	q.size = Vector2(1, 1)
+	_fog.mesh = q
+	_fog.instance_count = 14
+	var fn := MultiMeshInstance3D.new()
+	fn.name = "fog"
+	fn.multimesh = _fog
+	var fm := ShaderMaterial.new()
+	fm.shader = preload("res://shaders/fog.gdshader")
+	fn.material_override = fm
+	fn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fn.custom_aabb = AABB(Vector3(-5, -1, -5), Vector3(10, 7, 10))
+	add_child(fn)
+	for i in 14:
+		_fog_list.append({"at": Vector3(randf_range(-2.4, 2.4), randf_range(0.6, 3.6), randf_range(-2.4, 1.2)), "size": randf_range(1.6, 2.8),
+				"drift": Vector3(randf_range(-0.06, 0.06), randf_range(-0.01, 0.02), randf_range(-0.04, 0.04)), "phase": randf() * TAU})
+	_dust = MultiMesh.new()
+	_dust.transform_format = MultiMesh.TRANSFORM_3D
+	var d := QuadMesh.new()
+	d.size = Vector2(1, 1)
+	_dust.mesh = d
+	_dust.instance_count = 90
+	var dn := MultiMeshInstance3D.new()
+	dn.name = "dust"
+	dn.multimesh = _dust
+	var dm := StandardMaterial3D.new()
+	dm.albedo_color = Color(1, 0.97, 0.9)
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.billboard_keep_scale = true
+	dm.roughness = 1.0
+	dn.material_override = dm
+	dn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dn.custom_aabb = AABB(Vector3(-5, -1, -5), Vector3(10, 7, 10))
+	add_child(dn)
+	for i in 90:
+		_dust_list.append({"at": Vector3(randf_range(-2.2, 2.2), randf_range(0.8, 3.8), randf_range(-2.2, 1.6)), "phase": randf() * TAU, "size": randf_range(0.006, 0.014)})
+
+
+func _animate_air(dt: float) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for i in _fog_list.size():
+		var f := _fog_list[i]
+		f.at += (f.drift as Vector3) * dt
+		# kept in the room
+		if absf(f.at.x) > 2.8:
+			f.drift.x = -f.drift.x
+		if f.at.z > 1.4 or f.at.z < -2.6:
+			f.drift.z = -f.drift.z
+		var s: float = f.size * (1.0 + 0.12 * sin(t * 0.3 + f.phase))
+		_fog.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * s), f.at + Vector3(0, 0.1 * sin(t * 0.2 + f.phase), 0)))
+	for i in _dust_list.size():
+		var m := _dust_list[i]
+		var p: Vector3 = m.at
+		# drifting slowly up in the warm air over the pot, wandering everywhere else
+		var up := 0.06 if Vector2(p.x, p.z).length() < 1.2 else 0.01
+		p += Vector3(sin(t * 0.4 + m.phase) * 0.02, up, cos(t * 0.33 + m.phase) * 0.02) * dt
+		if p.y > 4.2:
+			p.y = 0.7
+		m.at = p
+		_dust.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * m.size), p))
+	# The tap: its handle turned while it pours, a stream of brew falling from it
+	if _pour > 0.0:
+		_pour -= dt
+		_tap_handle.rotation.z = lerp_angle(_tap_handle.rotation.z, PI * 0.5, minf(1.0, dt * 10.0))
+		var spout := _pot.global_transform * TAP_AT + Vector3(0, -0.06, 0.08)
+		brew.pour_drop(brew.to_local(spout))
+	else:
+		_tap_handle.rotation.z = lerp_angle(_tap_handle.rotation.z, 0.0, minf(1.0, dt * 6.0))
+
+
+## The drain tap opened: the brew pours out of it for a moment
+func pour() -> void:
+	_pour = 1.2
 
 
 ## Moonlight in through the window behind, cool, catching the customers' shoulders
