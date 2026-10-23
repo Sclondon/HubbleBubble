@@ -60,6 +60,7 @@ var _flash := 0.0
 var _splashes: Array[Splash] = []
 var _drops: MultiMeshInstance3D
 var _drop_list: Array[Dictionary] = []
+var _drop_bubbles: MultiMeshInstance3D
 var _next_splash := 0
 
 
@@ -156,6 +157,7 @@ func _ready() -> void:
 	_drops.material_override = dm
 	_drops.custom_aabb = AABB(Vector3(-3, -2, -3), Vector3(6, 6, 6))
 	add_child(_drops)
+	_drop_bubbles = _multi("drop_bubbles", _dome(), preload("res://shaders/bubble.gdshader"), 24)
 	for i in 3:
 		_vents.append(Vector2(randf_range(-0.4, 0.4), randf_range(-0.4, 0.4)))
 	for i in 3:
@@ -185,7 +187,7 @@ func ripple(at: Vector2, power := 1.0) -> void:
 ## The stick drawn through the brew at a point (local x, z), going speed metres a second: a wake
 func wake(at: Vector2, speed: float) -> void:
 	if speed > 0.9 and randf() < (speed - 0.9) * 0.25:
-		droplets(Vector3(at.x, 0, at.y), 2 + int(speed), 0.6 + speed * 0.4)
+		droplets(Vector3(at.x, 0, at.y), 1 + int(speed * 0.5), 0.6 + speed * 0.4)
 	_wake.stick_at(at)
 	_waves.push(at, clampf(0.006 + speed * 0.012, 0.0, 0.04), 0.055)
 	_waves.foam(at, clampf(0.05 + speed * 0.12, 0.0, 0.35), 0.045)
@@ -196,7 +198,7 @@ func splash(at: Vector3, strength := 1.0) -> void:
 	var sp := _splashes[_next_splash]
 	_next_splash = (_next_splash + 1) % _splashes.size()
 	sp.start(Vector3(at.x, 0.0, at.z), strength, look)
-	droplets(Vector3(at.x, 0.0, at.z), int(4 + 4 * strength), 1.4 + strength * 0.5)
+	droplets(Vector3(at.x, 0.0, at.z), int(3 + 3 * strength), 1.2 + strength * 0.4)
 	ripple(Vector2(at.x, at.z), 1.6 * strength)
 	_waves.foam(Vector2(at.x, at.z), 0.5, 0.09 * sqrt(strength))
 	_flash = maxf(_flash, 0.25 * strength)
@@ -217,36 +219,64 @@ func puffs(at: Vector3, count: int, col: Color, speed := 0.6, size := 1.0) -> vo
 
 
 ## Drops of the brew flung out of it, arcing over and falling back (or over the rim onto the iron)
+## What's flung out of the brew (a splash, the stick, a cooking pot), a few of each kind: blobs of
+## brew, tiny dots, flecks of foam, and bubbles that drift down light. Each that falls back in leaves
+## a little ripple as big as it is; off over the rim they're gone.
 func droplets(at: Vector3, count: int, speed := 1.2) -> void:
 	var col := look.liquid.lerp(look.foam, 0.2)
 	for i in count:
-		if _drop_list.size() >= 64:
+		if _drop_list.size() >= 48:
 			_drop_list.remove_at(0)
+		var r := randf()
+		var kind := "blob" if r < 0.3 else ("dot" if r < 0.6 else ("foam" if r < 0.82 else "bubble"))
+		var size: float = {"blob": randf_range(0.022, 0.034), "dot": randf_range(0.007, 0.012), "foam": randf_range(0.015, 0.026), "bubble": randf_range(0.02, 0.035)}[kind]
+		var go: float = speed * randf_range(0.5, 1.15) * (0.6 if kind == "bubble" else (1.2 if kind == "dot" else 1.0))
 		var dir := Vector3(randf_range(-0.6, 0.6), 1.0, randf_range(-0.6, 0.6)).normalized()
-		_drop_list.append({"at": Vector3(at.x, 0.02, at.z), "vel": dir * speed * randf_range(0.6, 1.3), "col": col, "size": randf_range(0.012, 0.028), "t": 0.0})
+		var c: Color = col if kind != "foam" else look.foam.lerp(Color.WHITE, 0.6)
+		_drop_list.append({"at": Vector3(at.x, 0.02, at.z), "vel": dir * go, "col": c, "size": size, "kind": kind, "t": 0.0, "spin": randf() * TAU})
 
 
 func _tend_drops(dt: float) -> void:
 	var mm := _drops.multimesh
+	var bm := _drop_bubbles.multimesh
 	var shown := 0
+	var shown_b := 0
 	for i in range(_drop_list.size() - 1, -1, -1):
 		var d := _drop_list[i]
 		d.t += dt
-		d.vel += Vector3(0, -6.0, 0) * dt
+		# bubbles are light: they drift down slowly and wobble
+		var fall: float = 2.0 if d.kind == "bubble" else (4.0 if d.kind == "foam" else 6.0)
+		d.vel += Vector3(0, -fall, 0) * dt
+		if d.kind != "blob" and d.kind != "dot":
+			d.vel *= 1.0 - dt * 1.5
 		d.at += d.vel * dt
 		var flat := Vector2(d.at.x, d.at.z)
-		# back into the brew (a little ring), or off over the rim and gone below
 		if d.vel.y < 0.0 and d.at.y <= 0.0 and flat.length() < RADIUS * 0.95:
-			ripple(flat, 0.25)
+			# back in: a little ring as big as it was (foam leaves a fleck)
+			ripple(flat, clampf(d.size * 14.0, 0.15, 0.5))
+			if d.kind == "foam":
+				_waves.foam(flat, 0.4, 0.04)
 			_drop_list.remove_at(i)
-		elif d.at.y < -1.4 or d.t > 2.5:
+		elif d.at.y < -1.4 or d.t > 3.0:
 			_drop_list.remove_at(i)
 	for d in _drop_list:
-		var stretch := 1.0 + minf(d.vel.length() * 0.4, 1.0)
-		mm.set_instance_transform(shown, Transform3D(Basis().scaled(Vector3(d.size, d.size * stretch, d.size)), d.at))
-		mm.set_instance_color(shown, d.col)
-		shown += 1
+		var sz: float = d.size
+		match d.kind:
+			"bubble":
+				bm.set_instance_transform(shown_b, Transform3D(Basis().scaled(Vector3.ONE * sz * (1.0 + 0.1 * sin(d.t * 15.0))), d.at))
+				bm.set_instance_color(shown_b, Color(1, 1, 1, 1))
+				shown_b += 1
+			"foam":
+				mm.set_instance_transform(shown, Transform3D(Basis(Vector3(0.3, 1, 0.2).normalized(), d.spin + d.t * 6.0).scaled(Vector3(sz, sz * 0.35, sz)), d.at))
+				mm.set_instance_color(shown, d.col)
+				shown += 1
+			_:
+				var stretch := 1.0 + minf(d.vel.length() * 0.4, 1.0)
+				mm.set_instance_transform(shown, Transform3D(Basis().scaled(Vector3(sz, sz * stretch, sz)), d.at))
+				mm.set_instance_color(shown, d.col)
+				shown += 1
 	mm.visible_instance_count = shown
+	bm.visible_instance_count = shown_b
 
 
 ## A burst of sparks flung up from a point (local)
@@ -576,7 +606,7 @@ func _float_body(f: Dictionary, dt: float, shake: float) -> void:
 				spin += Vector3(out.y, 0, -out.x) * sv.length() * 4.0 * h * 60.0
 		# Cooking: kicked about
 		if shake > 0.0 and randf() < h * 3.0:
-			droplets(Vector3(pos.x, 0, pos.z), 3, 1.3)
+			droplets(Vector3(pos.x, 0, pos.z), 2, 1.1)
 		if shake > 0.0 and randf() < h * 8.0:
 			vel += Vector3(randf_range(-0.3, 0.3), randf_range(0.4, 0.9), randf_range(-0.3, 0.3))
 			spin += Vector3(randf_range(-10, 10), randf_range(-5, 5), randf_range(-10, 10))
@@ -712,6 +742,9 @@ func _apply(l: PotionLook) -> void:
 	bm.set_shader_parameter("tint", l.bubble_colour)
 	bm.set_shader_parameter("opacity", l.bubble_opacity)
 	bm.set_shader_parameter("shine", l.bubble_shine)
+	var dbm := _drop_bubbles.material_override as ShaderMaterial
+	dbm.set_shader_parameter("tint", l.bubble_colour)
+	dbm.set_shader_parameter("opacity", l.bubble_opacity)
 
 
 static func _close(a: PotionLook, b: PotionLook) -> bool:
@@ -859,11 +892,6 @@ class Splash:
 			mat.set_shader_parameter("pale", body.lerp(look.foam, 0.55))
 			mat.set_shader_parameter("blue", body)
 			node.visible = false
-		for p in _drops:
-			p.color = body.lerp(look.foam, 0.4)
-			p.initial_velocity_max = 3.0 * sqrt(strength)
-			p.restart()
-			p.emitting = true
 		visible = true
 		set_process(true)
 
