@@ -829,8 +829,8 @@ func _animate_stick(dt: float) -> void:
 	_tip = _tip.lerp(want, minf(1.0, dt * (22.0 if stirring else 3.0)))
 	var flat_out := Vector3(_tip.x, 0, _tip.z)
 	var out := flat_out.normalized() if flat_out.length() > 0.05 else Vector3.BACK
-	# (the spoon down in the brew, the top of its bowl just breaking the surface so you can see it's a spoon)
-	var dip := _tip - Vector3(0, 0.02, 0)
+	# (the spoon down in the brew, well down, its bowl deep under and only the handle standing out)
+	var dip := _tip - Vector3(0, 0.45, 0)
 	# standing nearly upright, leaning a little outward and away from you, so it clears the rim
 	var top := dip + (Vector3.UP + out * 0.22 + Vector3(0.06, 0, -0.12)).normalized() * 0.98
 	stick.global_position = global_transform * top
