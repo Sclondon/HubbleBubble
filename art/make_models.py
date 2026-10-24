@@ -1709,12 +1709,11 @@ def build_props():
     paint(needle[1], lambda co, n: lin("#3a2414"))
     out["thermometer_needle"] = needle
 
-    # The island the hut stands on, after Banjo-Kazooie's Spiral Mountain and Gruntilda's Lair: a
+    # The island the hut stands on, after Banjo-Kazooie's Spiral Mountain: a
     # grassy meadow (a dirt path winding out from the hut's window, a yellow flower field, round
     # cottages) ringed by flat-topped plateaus and tall rock pillars, their grass tops hanging over the
-    # brown cliffs in drips, waterfalls off them, big round-crowned trees, and behind it all the lair:
-    # a mossy mountain carved into a witch's face, glowing green eyes and a great open mouth a rope
-    # bridge runs into. Blender's +Y is out of the hut's window (the game's -Z).
+    # brown cliffs in drips, waterfalls off them, big round-crowned trees, high cliffs all round.
+    # Blender's +Y is out of the hut's window (the game's -Z).
     # Every corner's alpha says what it's made of for shaders/isle.gdshader: 1 plain, 0.9 grass,
     # 0.8 rock, 0.7 water, 0.6 flowers, 0.5 leaves, 0.3 glowing.
     from mathutils import noise as mnoise
@@ -1873,8 +1872,6 @@ def build_props():
     # A ring of high cliffs closing the world in
     for k in range(16):
         a = math.tau * k / 16 + 0.1
-        if abs(((a - math.pi / 2 + math.pi) % math.tau) - math.pi) < 0.75:
-            continue  # (not in front of the lair)
         isle += plateau(math.cos(a) * 72, math.sin(a) * 72, 15, rnd_i.uniform(9, 16), 60 + k, grass="#2a9a24", rock="#946430")
     isle += waterfall(-28, 24, 9, 7, (0, 18))
     isle += waterfall(25, 20, 8, 6.5, (0, 18))
@@ -1882,75 +1879,6 @@ def build_props():
     for x, y, s in [(-6, 8, 1.0), (6, 7, 0.9), (-18, 17, 1.1), (17, 17, 1.0), (-9, 33, 1.0), (10, 31, 1.1), (-6, 19, 0.85),
                     (7, 21, 0.95), (12, 45, 1.2), (-13, 36, 1.0), (19, 46, 1.1), (-2, 50, 1.3), (-14, 3, 1.0), (14, 2, 0.9)]:
         isle += tree(x, y, s)
-
-    # The lair: a great mossy mountain with a witch's face carved in the side facing the hut
-    LX, LY = 4.0, 80.0
-
-    def lair_r(z):
-        return max(2.0, 26.0 - z * 0.42)
-    mount = lathe("lair", [(z, lair_r(z), lair_r(z)) for z in [-1, 4, 9, 14, 19, 24, 30, 36, 42, 50, 56]], seg=26, sub=0,
-                  wobble=lambda a, z: 2.2 * mnoise.noise(Vector((math.cos(a) * 2.0, math.sin(a) * 2.0, z * 0.12))))
-    for vtx in mount.data.vertices:
-        k = max(0.0, vtx.co.z - 30.0) / 26.0
-        vtx.co.x += 9.0 * k * k
-    mount.data.transform(Matrix.Translation((LX, LY, 0)))
-    paint(mount, lambda co, n: m(lin("#4a8a38").lerp(lin("#2e6028"), 0.5 + 0.5 * mnoise.noise(Vector((co.x * 0.1, co.y * 0.1, co.z * 0.1)))), ROCK))
-    isle.append(mount)
-
-    def front(z, dx=0.0):
-        """A point on the lair's face, `dx` across it, at height z"""
-        return Vector((LX + dx, LY - math.sqrt(max(1.0, lair_r(z) ** 2 - dx * dx)) + 1.2, z))
-    face = []
-    for sx in (-1, 1):
-        e = front(17, sx * 6.0)
-        sock = egg("eye_socket", e, (3.4, 1.2, 2.4), seg=12, rings=6, sub=0)
-        paint(sock, lambda co, n: m("#0e1a0e", 1.0))
-        ball = egg("eye", e + Vector((0, -0.7, 0)), (2.4, 0.8, 1.8), seg=12, rings=6, sub=0)
-        paint(ball, lambda co, n: m("#5aff6a", GLOWING))
-        pupil = egg("pupil", e + Vector((sx * -0.3, -1.4, -0.2)), (0.9, 0.5, 1.2), seg=8, rings=5, sub=0)
-        paint(pupil, lambda co, n: m("#0a2a0a", 1.0))
-        b0 = front(20.5, sx * 2.5)
-        b1 = front(21.5, sx * 9.5)
-        brow = tube("brow", b0 + Vector((0, -1.0, -0.6)), b1 + Vector((0, -0.6, 0.6)), 1.0, 0.7, seg=7)
-        paint(brow, lambda co, n: m("#b88a3a", ROCK))
-        face += [sock, ball, pupil, brow]
-    n0 = front(16.5)
-    nose = tube("nose", n0 + Vector((0, 1.0, 0)), n0 + Vector((0, -8.0, -5.0)), 2.6, 0.5, seg=9)
-    paint(nose, lambda co, n: m("#5aa040", ROCK))
-    wart = egg("wart", n0 + Vector((1.4, -4.5, -2.2)), (0.9, 0.9, 0.9), seg=8, rings=5, sub=0)
-    paint(wart, lambda co, n: m("#5a8a3a", ROCK))
-    mo = front(8.0)
-    mouth = egg("mouth", mo + Vector((0, -0.4, 0)), (6.5, 1.4, 3.2), seg=16, rings=8, sub=0)
-    paint(mouth, lambda co, n: m("#c82a1a", GLOWING))
-    lips = lathe("lips", [(-0.6, 7.2, 3.8), (0.6, 7.2, 3.8)], seg=18, sub=0, cap_top=False, cap_bottom=False)
-    lips.data.transform(Matrix.Translation(mo + Vector((0, -0.6, 0))) @ Matrix.Rotation(math.pi / 2, 4, "X"))
-    paint(lips, lambda co, n: m("#2a4a1e", ROCK))
-    face += [nose, wart, mouth, lips]
-    for k in range(5):
-        tx = -4.0 + k * 2.0
-        tooth = box("tooth", (mo.x + tx, mo.y - 1.6, mo.z + 2.0 - abs(tx) * 0.12), (0.9, 0.5, 1.4))
-        paint(tooth, lambda co, n: m("#f0ead0", 1.0))
-        face.append(tooth)
-    isle += face
-    # The rope bridge from the tallest pillar into the mouth
-    b0 = Vector((14.0, 49.0, 13.0))
-    b1 = mo + Vector((0, -1.0, -2.2))
-    for k in range(18):
-        t = (k + 0.5) / 18
-        p = b0.lerp(b1, t) + Vector((0, 0, -1.2 * math.sin(t * math.pi)))
-        plank = box("plank", p, (1.8, 0.45, 0.12), rot=Matrix.Rotation(math.atan2(b1.x - b0.x, b1.y - b0.y), 3, "Z"))
-        paint(plank, lambda co, n: m("#8a5a2a", 1.0))
-        isle.append(plank)
-    for sx in (-0.95, 0.95):
-        prev = None
-        for k in range(9):
-            t = k / 8
-            p = b0.lerp(b1, t) + Vector((sx, 0, 0.9 - 1.2 * math.sin(t * math.pi)))
-            if prev is not None:
-                rope = tube("rope", prev, p, 0.06, 0.06, seg=6)
-                paint(rope, lambda co, n: m("#c8a060", 1.0))
-                isle.append(rope)
-            prev = p
 
     def cottage(x, y, wall, roof, turn):
         z = ground_h(x, y)

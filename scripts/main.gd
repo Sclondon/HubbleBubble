@@ -145,6 +145,10 @@ var _heat_err := {}
 var _cam_pos := Vector3.ZERO
 var _cam_look := Vector3.ZERO
 var _lean := 0.0
+## What the brew does now (kept up to date as steps go in)
+var _brew_effect := ""
+## How far the jar's tipped over, scooping
+var _scoop := 0.0
 
 
 func _ready() -> void:
@@ -745,9 +749,11 @@ func _process(dt: float) -> void:
 	_update_speech(dt)
 	if is_instance_valid(_held):
 		var to := _held_to
+		var scooping := false
 		if _held_kind == "bottle" and hut.over_pot(_held.global_position) and _brewing() and not brew.is_empty():
 			# Dipped into the brew, it fills (glugging) till it's full
-			to.y = Hut.BREW_LEVEL - 0.08
+			scooping = _fill < 1.0
+			to.y = Hut.BREW_LEVEL - 0.08 - _scoop * 0.06
 			if _held.global_position.y < Hut.BREW_LEVEL + 0.12 and _fill < 1.0:
 				_fill = minf(1.0, _fill + dt / 0.8)
 				hut.fill_bottle(_held, _fill, Lore.resolve(brew).colour)
@@ -759,6 +765,12 @@ func _process(dt: float) -> void:
 		elif _held_kind == "bottle" and _fill >= 1.0:
 			to.y = maxf(to.y, Hut.CAULDRON_RIM + 0.25)
 		hut.carry(_held, to, dt)
+		# Scooping: tipped over mouth-first into the brew and swept through it, righted as it fills
+		_scoop = move_toward(_scoop, 1.0 if scooping else 0.0, dt * (4.0 if scooping else 2.5))
+		if _held_kind == "bottle" and _scoop > 0.0:
+			var tip := _scoop * (1.0 - smoothstep(0.55, 1.0, _fill) * 0.85)
+			_held.rotation.z += tip * 1.35
+			_held.rotation.x += tip * sin(_fill * TAU) * 0.25
 	for f in floaters:
 		f.t += dt
 	floaters = floaters.filter(func(f: Dictionary) -> bool: return f.t < 1.4)
@@ -864,12 +876,20 @@ func _tend(dt: float) -> void:
 		_band_t = 0.0
 		_hold_err = 0.0
 	# Worked up: stop stirring and it poofs (or it poofs by itself, overworked)
+	if mode == "shop" and not finishing and not finished and not brew.is_empty() and _brew_effect != "":
+		for i in orders.size():
+			if Book.POTIONS[orders[i].potion].effect == _brew_effect:
+				select(i)
+				_start_finish(_brew_effect)
+				break
 	if finishing:
-		_finish_idle += dt
+		# (only counts as stopped once the finger's off the pot, or the keys let go)
+		if not _finger_stir and _stir_seen <= 0.0:
+			_finish_idle += dt
 		if finish_k >= 0.85 and not _sweet_rung:
 			_sweet_rung = true
 			Sfx.play("tap", 2.0, -2.0)
-		if (finish_k >= 0.4 and _finish_idle >= 0.7) or finish_k >= 1.4:
+		if (finish_k >= 0.4 and _finish_idle >= 0.4) or finish_k >= 1.4:
 			_finish()
 	heat_fill = clampf(_band_t / HOLD, 0.0, 1.0) if band > _band_counted and not brew.is_empty() else 0.0
 
@@ -1221,6 +1241,9 @@ func stir_touch(at: Vector2) -> void:
 
 func stir_release() -> void:
 	_finger_stir = false
+	# Lifted off a brew that's been worked up: poof
+	if finishing and finish_k >= 0.4:
+		_finish()
 	_stir_last = Vector2.INF
 
 
@@ -1255,8 +1278,7 @@ func _record(step: Dictionary) -> void:
 			finishing = false
 			finished = false
 			finish_k = 0.0
-	elif mode == "shop" and not selected_order().is_empty() and r.effect == Book.POTIONS[selected_order().potion].effect:
-		_start_finish(r.effect)
+	_brew_effect = r.effect if r.effect != "nothing" else ""
 
 
 ## Opens the tap at the foot of the pot: the brew pours out, and the pot starts again
@@ -1281,7 +1303,7 @@ func fill_water() -> void:
 
 ## Tips the pot out to start again
 func tip_out() -> void:
-	if not _brewing() or brew.is_empty():
+	if not _brewing() or brew.is_empty() or finishing:
 		return
 	hut.poof()
 	hut.fresh()
@@ -1394,6 +1416,7 @@ func _spoil(rhyme: String, short := "") -> void:
 
 func _reset_brew() -> void:
 	brew.clear()
+	_brew_effect = ""
 	finishing = false
 	finished = false
 	finish_k = 0.0

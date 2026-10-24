@@ -495,6 +495,8 @@ func _draw_grades() -> void:
 	var sb := StyleBoxFlat.new()
 	sb.set_corner_radius_all(22)
 	sb.anti_aliasing = true
+	if shop.finishing:
+		_finish_meter()
 	if shop.finishing and shop.finish_k < 0.2:
 		var msg := "STIR TILL IT POOFS!"
 		var w := f.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 40
@@ -524,6 +526,32 @@ func _draw_grades() -> void:
 			# (each star pops in one after another)
 			var pop := clampf((3.5 - shop.grade_t) * 4.0 - (i * 3 + k) * 0.35, 0.0, 1.0)
 			_star(c, 16.0 * pop, Color(1.0, 0.82, 0.25, a) if k < got else Color(0.35, 0.3, 0.4, 0.8 * a))
+
+
+## How far the brew's been worked: a curve under the front of the pot filling up, the stretch where
+## it's just right picked out in gold, and a word: stir, let go, too much
+func _finish_meter() -> void:
+	var cs: Array = shop.cauldron_screen()
+	var c: Vector2 = cs[0]
+	var r: float = cs[1] * 1.05
+	var a0 := PI * 0.85
+	var a1 := PI * 0.15
+	var full := 1.4
+	var k := clampf(shop.finish_k / full, 0.0, 1.0)
+	draw_arc(c, r, a0, a1, 40, Color(0.04, 0.02, 0.07, 0.6), 18.0)
+	draw_arc(c, r, lerpf(a0, a1, 0.85 / full), lerpf(a0, a1, 1.1 / full), 12, Color(1.0, 0.85, 0.3, 0.45), 18.0)
+	var good := shop.finish_k >= 0.85 and shop.finish_k <= 1.1
+	var over := shop.finish_k > 1.1
+	var col := Color(1.0, 0.85, 0.3) if good else (Color(1.0, 0.4, 0.3) if over else Color(0.75, 0.95, 1.0))
+	if k > 0.0:
+		draw_arc(c, r, a0, lerpf(a0, a1, k), 40, col, 10.0)
+	var msg := "LET GO!" if good else ("TOO MUCH!" if over else "STIR!")
+	var f: Font = speech_font
+	var fs := 28
+	var w := f.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var at := c + Vector2(-w * 0.5, r + 34)
+	draw_string(f, at + Vector2(2, 3), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.5))
+	draw_string(f, at, msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 
 
 func _star(c: Vector2, r: float, col: Color) -> void:
