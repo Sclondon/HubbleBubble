@@ -125,6 +125,26 @@ var _held_to := Vector3.ZERO
 var _held_from := Vector2.ZERO
 var _last_added := -1
 var _added_count := 0
+## Finishing: once the brew is what was asked for (or you go to bottle it), stirring stops adding to
+## the recipe and works the brew up instead, till it poofs. How far it's been worked (1 is just
+## right: FINISH_TURNS whole turns), how long since the stick last went round, and whether it's
+## poofed (only a poofed brew goes in a bottle). The camera leans in over the pot as it's worked.
+const FINISH_TURNS := 3.0
+var finishing := false
+var finished := false
+var finish_k := 0.0
+var _finish_idle := 0.0
+var _finish_effect := ""
+var _sweet_rung := false
+## The marks for the brew last finished, 1 to 3 stars each: the dose (the right ingredients, no
+## more), the heat (held near the middle of its band) and the stir (stopped at the right moment)
+var grades := {}
+var grade_t := 0.0
+var _hold_err := 0.0
+var _heat_err := {}
+var _cam_pos := Vector3.ZERO
+var _cam_look := Vector3.ZERO
+var _lean := 0.0
 
 
 func _ready() -> void:
@@ -260,12 +280,16 @@ func _frame() -> void:
 		var back := maxf(0.0, -spare)
 		camera.position = Vector3(0, 2.7 + maxf(spare, 0.0) * 0.2 + back * 0.25, 2.55 + maxf(spare, 0.0) * 0.5 + back * 0.45)
 		camera.look_at(Vector3(0, 1.45, -1.0))
+		_cam_pos = camera.position
+		_cam_look = Vector3(0, 1.45, -1.0)
 	else:
 		# Wide: framed by height, close enough that the walls either side don't take over
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.fov = 56.0
 		camera.position = Vector3(0, 2.95, 3.3)
 		camera.look_at(Vector3(0, 1.3, -1.0))
+		_cam_pos = camera.position
+		_cam_look = Vector3(0, 1.3, -1.0)
 	if hud != null:
 		hud.layout()
 
@@ -740,6 +764,14 @@ func _process(dt: float) -> void:
 	floaters = floaters.filter(func(f: Dictionary) -> bool: return f.t < 1.4)
 	intro_t += dt
 	_eyes()
+	# Leaning in over the pot as a brew is worked up to its finish, and back after
+	if state in ["play", "intro"] and _cam_pos != Vector3.ZERO:
+		var want_lean := smoothstep(0.0, 1.0, minf(finish_k, 1.15)) if finishing else 0.0
+		_lean = lerpf(_lean, want_lean, minf(1.0, dt * (0.9 if finishing else 1.8)))
+		camera.position = _cam_pos.lerp(Vector3(0, Hut.CAULDRON_RIM + 1.1, 1.3), _lean * 0.55)
+		camera.look_at(_cam_look.lerp(Vector3(0, Hut.BREW_LEVEL, -0.1), _lean * 0.7))
+	hut.brew.finish = finish_k if finishing else 0.0
+	grade_t = maxf(0.0, grade_t - dt)
 	if paused:
 		return
 	if state == "play":
@@ -819,13 +851,26 @@ func _tend(dt: float) -> void:
 	var band := Book.band_of(heat)
 	if band >= 1 and band == _band:
 		_band_t += dt
+		var mid: float = (Book.HEAT_BANDS[band] + Book.HEAT_BANDS[band + 1]) * 0.5
+		var half: float = (Book.HEAT_BANDS[band + 1] - Book.HEAT_BANDS[band]) * 0.5
+		_hold_err += absf(heat - mid) / half * dt
 		if _band_t >= HOLD and band > _band_counted and not brew.is_empty():
 			_band_counted = band
+			_heat_err[band] = _hold_err / maxf(_band_t, 0.01)
 			_record({"kind": Book.HEAT, "level": band})
 			Sfx.play("tap", 1.5, -2.0)
 	else:
 		_band = band
 		_band_t = 0.0
+		_hold_err = 0.0
+	# Worked up: stop stirring and it poofs (or it poofs by itself, overworked)
+	if finishing:
+		_finish_idle += dt
+		if finish_k >= 0.85 and not _sweet_rung:
+			_sweet_rung = true
+			Sfx.play("tap", 2.0, -2.0)
+		if (finish_k >= 0.4 and _finish_idle >= 0.7) or finish_k >= 1.4:
+			_finish()
 	heat_fill = clampf(_band_t / HOLD, 0.0, 1.0) if band > _band_counted and not brew.is_empty() else 0.0
 
 
@@ -1083,6 +1128,12 @@ func _bottle_from(from: Vector3) -> bool:
 		Sfx.play("huff", 1.4, -6.0)
 		hut.poke("bottle", true)
 		return false
+	# Not finished yet: stir it till it poofs first
+	if not finished:
+		if not finishing:
+			_start_finish(Lore.resolve(brew).effect)
+		Sfx.play("huff", 1.4, -6.0)
+		return false
 	var result := Lore.resolve(brew)
 	_discovered_now = not discoveries.has(result.effect) and result.effect != "nothing"
 	_discover(result)
@@ -1105,6 +1156,13 @@ func stir(angle: float) -> void:
 	if _stir_sound > PI * 0.6:
 		_stir_sound = 0.0
 		Sfx.play("slosh", randf_range(0.85, 1.15), -4.0)
+	if finishing:
+		finish_k += absf(angle) / (TAU * FINISH_TURNS)
+		_finish_idle = 0.0
+		stir_fill = 0.0
+		return
+	if finished:
+		return
 	var dir := 1 if angle > 0.0 else -1
 	if dir != _stir_dir:
 		_stir_dir = dir
@@ -1190,6 +1248,15 @@ func _record(step: Dictionary) -> void:
 	var r := Lore.resolve(brew)
 	hut.set_brew(r.colour, false, r.effect if r.effect != "nothing" else "")
 	hud.tick_step(brew.size() - 1)
+	# Changed into something else, it has to be finished again; made into what was asked for, it's
+	# ready to be finished
+	if finishing or finished:
+		if r.effect != _finish_effect:
+			finishing = false
+			finished = false
+			finish_k = 0.0
+	elif mode == "shop" and not selected_order().is_empty() and r.effect == Book.POTIONS[selected_order().potion].effect:
+		_start_finish(r.effect)
 
 
 ## Opens the tap at the foot of the pot: the brew pours out, and the pot starts again
@@ -1222,6 +1289,89 @@ func tip_out() -> void:
 	_reset_brew()
 
 
+## The brew is what's wanted (or about to be bottled): from now the stick works it up to its finish
+func _start_finish(effect: String) -> void:
+	finishing = true
+	finished = false
+	finish_k = 0.0
+	_finish_idle = 0.0
+	_finish_effect = effect
+	_sweet_rung = false
+	_stir_run = 0.0
+	stir_fill = 0.0
+	Sfx.play("zap", 1.6, -8.0)
+
+
+## Poof: finished, and marked
+func _finish() -> void:
+	finishing = false
+	finished = true
+	grades = {"dose": _grade_dose(), "heat": _grade_heat(), "stir": _grade_stir(finish_k)}
+	grade_t = 3.5
+	hut.poof()
+	hut.brew.puffs(Vector3.ZERO, 14, Color(Lore.resolve(brew).colour, 0.9), 0.9, 1.4)
+	Sfx.play("zap", 0.8)
+	Sfx.play("cork", 0.8, -4.0)
+
+
+static func _grade_stir(k: float) -> int:
+	if k >= 0.85 and k <= 1.1:
+		return 3
+	if k >= 0.65 and k <= 1.25:
+		return 2
+	return 1
+
+
+## The steps of what's wanted (in the shop), or none (brewing freely)
+func _recipe() -> Array:
+	if mode == "shop" and not selected_order().is_empty():
+		return selected_order().steps
+	return []
+
+
+func _grade_dose() -> int:
+	var have := []
+	for st: Dictionary in brew:
+		if st.kind == Book.ADD:
+			have.append(st.what)
+	var want := []
+	for st: Dictionary in _recipe():
+		if st.kind == Book.ADD:
+			want.append(st.what)
+	if want.is_empty():
+		# brewing freely: one of each is the right dose
+		var seen := {}
+		for w: int in have:
+			if seen.has(w):
+				return 2
+			seen[w] = true
+		return 3
+	if have == want:
+		return 3
+	for w: int in want:
+		if not have.has(w):
+			return 1
+	return 2 if have.size() - want.size() <= 1 else 1
+
+
+func _grade_heat() -> int:
+	var want_level := -1
+	for st: Dictionary in _recipe():
+		if st.kind == Book.HEAT:
+			want_level = st.level
+	var got := 0
+	for st: Dictionary in brew:
+		if st.kind == Book.HEAT:
+			got = maxi(got, st.level)
+	var level := want_level if want_level >= 0 else got
+	if level <= 0:
+		return 3
+	if got != level:
+		return 1
+	var err: float = _heat_err.get(level, 1.0)
+	return 3 if err < 0.4 else (2 if err < 0.7 else 1)
+
+
 ## A brew bottled for the first time is written in the book, with how it was made
 func _discover(result: Dictionary) -> void:
 	if result.effect == "nothing" or discoveries.has(result.effect):
@@ -1244,6 +1394,11 @@ func _spoil(rhyme: String, short := "") -> void:
 
 func _reset_brew() -> void:
 	brew.clear()
+	finishing = false
+	finished = false
+	finish_k = 0.0
+	_heat_err.clear()
+	_hold_err = 0.0
 	_last_added = -1
 	_added_count = 0
 	_hold = 0.0
@@ -1263,6 +1418,9 @@ func _serve(result: Dictionary, from := Vector3(0, Hut.CAULDRON_RIM + 0.2, 0)) -
 	Sfx.play("cork")
 	if result.effect == wanted:
 		var base: int = 15 + (o.steps.size() - 1) * 5 + result.potency * 3
+		# the marks: all nine stars pays half as much again, three pays not half
+		var stars: int = grades.get("dose", 2) + grades.get("heat", 2) + grades.get("stir", 2)
+		base = int(round(base * (0.4 + stars / 9.0 * 1.1)))
 		var tip := int(round(base * 0.6 * clampf(o.patience / o.full, 0.0, 1.0)))
 		combo += 1
 		var coins: int = base + tip + mini(combo - 1, 5) * 3

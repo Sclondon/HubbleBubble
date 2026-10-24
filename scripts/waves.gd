@@ -17,6 +17,8 @@ var radius := 0.8
 ## How fast waves run (0 to 0.5), and how much is kept each step (thick brews drag more)
 var speed := 0.32
 var keep := 0.985
+## How many times faster than real time it runs (the boil quickens it)
+var rate := 1.0
 ## How much foam is kept each step
 var foam_keep := 0.965
 var texture: ImageTexture
@@ -96,7 +98,7 @@ func _spread(at: Vector2, size: float, apply: Callable) -> void:
 func update(dt: float) -> bool:
 	if _quiet > 3.0:
 		return false
-	_due += dt
+	_due += dt * rate
 	var stepped := false
 	while _due >= STEP:
 		_due -= STEP

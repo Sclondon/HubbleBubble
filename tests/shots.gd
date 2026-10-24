@@ -14,6 +14,8 @@ var main: Shop
 
 
 func _initialize() -> void:
+	# (waits are counted in frames, as sixtieths of a second)
+	Engine.max_fps = 60
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shots="):
 			out = a.substr(8)
@@ -81,6 +83,38 @@ func _run() -> void:
 		main.camera.look_at(Vector3(0, 5.0, -40.0) if only == "isle" else Vector3(0, 1.0, -15.0))
 		await _frames(10)
 		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
+		quit()
+		return
+	if only == "finish":
+		# A brew stirred up to its finish: the camera leaning in, then the poof and its marks
+		main.start_free()
+		await _frames(5)
+		main.add(1)
+		await _frames(30)
+		main.add(2)
+		for i in 100:
+			main.heat = 35.0
+			await process_frame
+		main._start_finish(Lore.resolve(main.brew).effect)
+		for i in 90:
+			main.heat = 35.0
+			main.stir(TAU * Shop.FINISH_TURNS * 0.95 / 90.0)
+			main._stir_seen = 0.25
+			main.hut.stir_at(Vector3(cos(main._stir_angle), 0, sin(main._stir_angle)) * 0.45)
+			await process_frame
+		root.get_texture().get_image().save_png("%s/finish_lean.png" % out)
+		await _frames(70)
+		root.get_texture().get_image().save_png("%s/finish_grades.png" % out)
+		quit()
+		return
+	if only == "boil":
+		main.start_free()
+		await _frames(5)
+		main.hut.set_brew(Color.WHITE, false, "dragon's breath")
+		for i in 200:
+			main.heat = 86.0
+			await process_frame
+		root.get_texture().get_image().save_png("%s/boil.png" % out)
 		quit()
 		return
 	if only == "spoon":

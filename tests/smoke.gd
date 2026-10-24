@@ -46,6 +46,15 @@ func _run() -> void:
 	await _seconds(0.9)
 	_check(main.brew.size() == 3 and main.brew[2].kind == Book.HEAT and main.brew[2].level == 1, "held warm a moment, it counts")
 	_check(Lore.resolve(main.brew).effect == "sleep", "and it makes Sleep")
+	_check(main.finishing, "made right, it's ready to be stirred to its finish")
+	main.bottle()
+	_check(main.served == 0 and not main.brew.is_empty(), "not bottled till it's finished")
+	for i in 30:
+		main.stir(TAU * Shop.FINISH_TURNS * 0.95 / 30.0)
+		await process_frame
+	_check(main.finishing and not main.finished, "still going round, it isn't done")
+	await _seconds(1.0)
+	_check(main.finished and main.grades.get("stir", 0) == 3, "stopped just right, it poofs: three stars for the stir (%s)" % str(main.grades))
 	var before := main.night_coins
 	main.bottle()
 	_check(main.night_coins > before and main.served == 1, "bottled, it sells (%d coins)" % (main.night_coins - before))
@@ -57,7 +66,7 @@ func _run() -> void:
 	main.heat = 55.0
 	await _seconds(1.3)
 	before = main.night_coins
-	main.bottle()
+	await _finish_and_bottle()
 	_check(main.night_coins > before, "any brew with the potion's effect will do")
 
 	# The wrong one: she drinks it anyway, and goes
@@ -67,7 +76,7 @@ func _run() -> void:
 	await _seconds(1.3)
 	var lost := main.lost
 	var customer: Witch = main.orders[0].customer
-	main.bottle()
+	await _finish_and_bottle()
 	_check(main.lost == lost + 1 and main.orders.is_empty(), "the wrong potion loses the sale")
 	for i in 12:
 		if is_instance_valid(customer) and customer._effect != "":
@@ -99,7 +108,7 @@ func _run() -> void:
 		main.stir(-TAU / 20.0)
 	_check(main.brew[-1].kind == Book.STIR and main.brew[-1].dir == -1, "a whole turn widdershins is written down")
 	_check(Lore.resolve(main.brew).effect == "wakefulness", "and turns sleep to wakefulness")
-	main.bottle()
+	await _finish_and_bottle()
 	_check(main.served >= 3, "the Wakeful Brew sells")
 
 	# Real touches: drag a jar to the pot, the bellows, round the pot, the bottles
@@ -139,8 +148,10 @@ func _run() -> void:
 	var want := main._on_plane(last, Hut.BREW_LEVEL)
 	_check(Vector2(main.hut._tip.x, main.hut._tip.z).distance_to(Vector2(want.x, want.z)) < 0.06, "the stick's tip follows the finger through the brew")
 	_send_touch(last, false)
-	_check(main.brew[-1].kind == Book.STIR and main.brew[-1].dir == 1, "dragging round the pot clockwise stirs it sunwise")
+	# (already a Sleeping Draught, so going round works it up to its finish rather than adding a stir)
+	_check((main.brew[-1].kind == Book.STIR and main.brew[-1].dir == 1) or (main.finishing and main.finish_k > 0.2), "dragging round the pot stirs it (finish %.2f)" % main.finish_k)
 	before = main.served
+	await _finish_brew()
 	# A jar off the tray, dipped in the pot till it's full, and let go: it's handed over
 	var tray := _centre("bottle")
 	_send_touch(tray, true)
@@ -223,7 +234,7 @@ func _run() -> void:
 	await _seconds(1.3)
 	main.zap()
 	await _frames(3)
-	main.bottle()
+	await _finish_and_bottle()
 	await _seconds(0.5)
 	_check(main.state == "tower", "bottled, up goes the periscope")
 	_check(main.discoveries.has("floating"), "Floating is written in the book")
@@ -310,6 +321,23 @@ func _check(ok: bool, what: String) -> void:
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
+
+
+## Stirs the brew to its finish (starting it, if it isn't yet) and waits for the poof
+func _finish_brew() -> void:
+	if main.finished:
+		return
+	if not main.finishing:
+		main._start_finish(Lore.resolve(main.brew).effect)
+	for i in 30:
+		main.stir(TAU * Shop.FINISH_TURNS * 0.95 / 30.0)
+		await process_frame
+	await _seconds(1.0)
+
+
+func _finish_and_bottle() -> void:
+	await _finish_brew()
+	main.bottle()
 
 
 func _seconds(s: float) -> void:

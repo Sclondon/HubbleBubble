@@ -102,7 +102,7 @@ static func old_words(s: Dictionary) -> String:
 			return "stir it %s %s" % ["sunwise" if s.dir > 0 else "widdershins", times]
 		ZAP:
 			return "quicken it with the wand"
-	return "and stopper it fast"
+	return "stir it till it poofs, and stopper it fast"
 
 ## Who comes to the window: other witches (models/witch_<model>.glb). `voice` is how high they talk;
 ## the colours are for the little face on their ticket.

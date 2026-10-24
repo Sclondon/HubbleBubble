@@ -279,6 +279,7 @@ func _draw() -> void:
 			# (the order notes hang in the hut now: see Tickets)
 			_draw_counts()
 			_draw_speech()
+			_draw_grades()
 			if shop.book_open:
 				_draw_book()
 			match shop.state:
@@ -486,6 +487,55 @@ func _check(c: Vector2, s: float) -> void:
 ## What a customer's saying, the way Banjo-Kazooie did it: a rounded see-through dark box just over
 ## her head (no pointer), chunky white letters with a dark edge that pop up one at a time as she
 ## mumbles them, each bouncing in and bobbing gently after
+## While a brew's being worked up: a word on what to do; after it poofs, its marks, a row of stars
+## for each, in the same dark rounded box the witches talk in
+func _draw_grades() -> void:
+	var f: Font = speech_font
+	var fs := 26
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(22)
+	sb.anti_aliasing = true
+	if shop.finishing and shop.finish_k < 0.2:
+		var msg := "STIR TILL IT POOFS!"
+		var w := f.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 40
+		var r := Rect2(Vector2((size_now.x - w) * 0.5, size_now.y * 0.3), Vector2(w, 50))
+		sb.bg_color = Color(0.04, 0.02, 0.07, 0.62)
+		draw_style_box(sb, r)
+		draw_string(f, r.position + Vector2(22, 34), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.45))
+		draw_string(f, r.position + Vector2(20, 32), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("fff2c0"))
+		return
+	if shop.grade_t <= 0.0 or shop.grades.is_empty():
+		return
+	var a := clampf(shop.grade_t / 0.5, 0.0, 1.0) * clampf((3.5 - shop.grade_t) / 0.2, 0.0, 1.0)
+	var w2 := 320.0
+	var row := 42.0
+	var box := Rect2(Vector2((size_now.x - w2) * 0.5, size_now.y * 0.3), Vector2(w2, row * 3 + 24))
+	sb.bg_color = Color(0.04, 0.02, 0.07, 0.62 * a)
+	draw_style_box(sb, box)
+	var names := ["DOSE", "HEAT", "STIR"]
+	var keys := ["dose", "heat", "stir"]
+	for i in 3:
+		var y := box.position.y + 12 + row * (i + 0.5)
+		draw_string(f, Vector2(box.position.x + 24, y + 11), names[i], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.45 * a))
+		draw_string(f, Vector2(box.position.x + 22, y + 9), names[i], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.95, 0.8, a))
+		var got: int = shop.grades.get(keys[i], 1)
+		for k in 3:
+			var c := Vector2(box.end.x - 120 + k * 40, y)
+			# (each star pops in one after another)
+			var pop := clampf((3.5 - shop.grade_t) * 4.0 - (i * 3 + k) * 0.35, 0.0, 1.0)
+			_star(c, 16.0 * pop, Color(1.0, 0.82, 0.25, a) if k < got else Color(0.35, 0.3, 0.4, 0.8 * a))
+
+
+func _star(c: Vector2, r: float, col: Color) -> void:
+	if r <= 0.5:
+		return
+	var pts := PackedVector2Array()
+	for i in 10:
+		var ang := -PI * 0.5 + i * PI / 5.0
+		pts.append(c + Vector2(cos(ang), sin(ang)) * (r if i % 2 == 0 else r * 0.45))
+	draw_colored_polygon(pts, col)
+
+
 func _draw_speech() -> void:
 	var sp := shop.speech
 	if sp.is_empty():

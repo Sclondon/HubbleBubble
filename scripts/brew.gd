@@ -53,6 +53,10 @@ var _sparks: MultiMeshInstance3D
 var _b: Array[Dictionary] = []
 var _s: Array[Dictionary] = []
 var _clock := 0.0
+## The waves' own clock: quicker the hotter it is
+var _wave_clock := 0.0
+## How far it's been worked up to its finish (Shop.finish_k), 0 when it isn't being
+var finish := 0.0
 var _bubble_due := 0.0
 var _puff_due := 0.0
 var _spark_due := 0.0
@@ -354,7 +358,9 @@ func _process(dt: float) -> void:
 			look = _target
 		_apply(look)
 	_flash = maxf(0.0, _flash - dt * 2.0)
-	_mat.set_shader_parameter("clock", _clock)
+	var roll := smoothstep(0.62, 0.85, heat)
+	_wave_clock += dt * (1.7 + heat * 1.6 + roll * 1.8)
+	_mat.set_shader_parameter("clock", _wave_clock)
 	_mat.set_shader_parameter("spin", spin)
 	_mat.set_shader_parameter("boil", clampf(heat * 1.3 - 0.2, 0.0, 1.0))
 	_mat.set_shader_parameter("murk", murk)
@@ -366,13 +372,35 @@ func _process(dt: float) -> void:
 		var a := randf() * TAU
 		var r := sqrt(randf()) * 0.65
 		_waves.push(Vector2(cos(a), sin(a)) * r, -0.004 * (0.5 + boil), 0.04)
+	# Roaring, it's a rolling boil: great domes heaving up all over and bursting, throwing up spray
+	var rolls := dt * roll * 26.0
+	while rolls > 0.0:
+		if randf() < rolls:
+			var a := randf() * TAU
+			var r := sqrt(randf()) * 0.62
+			var at := Vector2(cos(a), sin(a)) * r
+			_waves.push(at, -randf_range(0.008, 0.016), randf_range(0.06, 0.1))
+			_waves.foam(at, 0.35, 0.07)
+			if randf() < 0.35:
+				droplets(Vector3(at.x, 0, at.y), randi_range(1, 3), 0.9)
+		rolls -= 1.0
+	# Worked up to its finish: it brightens and swirls, golden sparks in it once it's just right,
+	# and spitting if it's overworked
+	if finish > 0.0:
+		if finish >= 0.85 and finish <= 1.1 and randf() < dt * 30.0:
+			var a := randf() * TAU
+			var r := sqrt(randf()) * 0.5
+			_add_spark(Vector3(cos(a) * r, 0.03, sin(a) * r), Vector3(randf_range(-0.2, 0.2), randf_range(0.8, 1.5), randf_range(-0.2, 0.2)), Color(1.0, 0.85, 0.35), randf_range(0.6, 1.1))
+		elif finish > 1.1 and randf() < dt * 20.0:
+			var a := randf() * TAU
+			droplets(Vector3(cos(a) * 0.3, 0, sin(a) * 0.3), 2, 1.2)
 	_tend_floaters(dt)
 	# The potion's light flickers like a living thing (slow swells, a quicker shiver, a stutter now and
 	# then) and sways about over the surface, so the shadows it throws creep and shift
 	var flick := 0.8 + 0.1 * sin(_clock * 2.3) + 0.07 * sin(_clock * 6.7 + 1.0) + 0.05 * sin(_clock * 15.3) - 0.08 * maxf(0.0, sin(_clock * 0.9) * sin(_clock * 11.0))
 	_light.position = Vector3(sin(_clock * 0.8) * 0.12 + sin(_clock * 2.1) * 0.04, 0.42 + sin(_clock * 1.3) * 0.06, 0.1 + cos(_clock * 0.7) * 0.1)
 	_light.light_color = _saturate(look.light_colour, 1.5).lerp(Color(0.5, 0.4, 0.25), murk)
-	_light.light_energy = 2.2 * (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow)
+	_light.light_energy = 2.2 * (look.light_energy * (1.6 + heat * 2.2) * flick * (1.0 - murk * 0.6) + _flash * 3.0) * (0.4 + look.glow) * (1.0 + minf(finish, 1.2) * 0.7)
 	_glow_light.light_color = _light.light_color
 	_rays.set_shader_parameter("tint", look.light_colour)
 	_rays.set_shader_parameter("strength", clampf((0.45 + look.glow * 0.45) * (0.8 + heat * 0.6) * (1.0 - murk * 0.7) * flick + _flash * 0.5, 0.0, 1.1))
@@ -388,7 +416,7 @@ func _process(dt: float) -> void:
 			smoke_shape(look.smoke_shape, look.shape_colour, look.shape_size)
 	_tend_shapes(dt)
 	# Now and then a puff of smoke rolls up off it, more when it's hot
-	_cloud_due += dt * look.steam * (0.15 + heat * 1.2) * (1.0 + murk)
+	_cloud_due += dt * look.steam * (0.15 + heat * 1.2 + roll * 5.0) * (1.0 + murk)
 	while _cloud_due >= 1.0:
 		_cloud_due -= 1.0
 		var ca := randf() * TAU
@@ -403,8 +431,9 @@ func _process(dt: float) -> void:
 		_tendrils.add_tendril(Vector3(cos(a) * r, 0.02, sin(a) * r), Color(look.light_colour, 0.22))
 	_tend_bubbles(dt)
 	_tend_steam(dt)
-	_waves.keep = lerpf(0.975, 0.94, thick())
-	_waves.speed = lerpf(0.22, 0.1, thick())
+	_waves.keep = lerpf(0.978, 0.95, thick())
+	_waves.speed = lerpf(0.36, 0.2, thick())
+	_waves.rate = 1.3 + heat * 0.6 + roll * 0.5
 	_waves.update(dt)
 	_tend_sparks(dt)
 	_tend_drops(dt)
@@ -564,7 +593,7 @@ func surface_at(p: Vector2) -> float:
 	var slow := lerpf(1.0, 0.45, thick())
 	var boil := clampf(heat * 1.3 - 0.2, 0.0, 1.0)
 	var a := 0.02 + 0.045 * boil
-	var t := _clock
+	var t := _wave_clock
 	var h := 0.028 * sin(p.dot(Vector2(0.6, 0.8)) * 4.2 - t * 1.3 * slow) + a * (sin(p.dot(Vector2(0.96, 0.28)) * 9.0 + t * 2.1 * slow) + 0.6 * sin(p.dot(Vector2(-0.37, 0.93)) * 13.0 - t * 2.7 * slow) + 0.35 * sin(p.dot(Vector2(0.66, -0.75)) * 19.0 + t * 3.4 * slow))
 	var rr := p.length() / RADIUS
 	return h + _waves.height_at(p) + minf(current * current, 30.0) * 0.0022 * (rr * rr - 0.5)
@@ -762,7 +791,7 @@ func _add_bubble(size_k := 1.0) -> void:
 
 
 func _tend_bubbles(dt: float) -> void:
-	_bubble_due += dt * look.bubbles * (0.6 + heat * 5.0) * (1.0 - murk * 0.7)
+	_bubble_due += dt * (look.bubbles * (0.6 + heat * 5.0) + smoothstep(0.62, 0.85, heat) * 30.0) * (1.0 - murk * 0.7)
 	while _bubble_due >= 1.0:
 		_bubble_due -= 1.0
 		_add_bubble()
@@ -796,7 +825,7 @@ func _tend_steam(dt: float) -> void:
 	for i in _vents.size():
 		_vents[i] += Vector2(sin(_clock * 0.7 + i * 2.0), cos(_clock * 0.5 + i * 3.0)) * dt * 0.15
 		_vents[i] = _vents[i].limit_length(0.5)
-	_puff_due += dt * look.steam * (0.3 + heat) * 1.6 * (1.0 - murk * 0.5)
+	_puff_due += dt * look.steam * (0.3 + heat + smoothstep(0.62, 0.85, heat) * 4.0) * 1.6 * (1.0 - murk * 0.5)
 	while _puff_due >= 1.0:
 		_puff_due -= 1.0
 		var v := _vents[randi() % _vents.size()]
@@ -813,7 +842,7 @@ func _add_spark(at: Vector3, vel: Vector3, col: Color, life: float) -> void:
 
 
 func _tend_sparks(dt: float) -> void:
-	_spark_due += dt * look.sparkles * (0.5 + heat) * 7.0
+	_spark_due += dt * look.sparkles * (0.5 + heat + smoothstep(0.62, 0.85, heat) * 5.0) * 7.0
 	while _spark_due >= 1.0:
 		_spark_due -= 1.0
 		var a := randf() * TAU
