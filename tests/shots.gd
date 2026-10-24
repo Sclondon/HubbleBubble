@@ -157,6 +157,18 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/floaters.png" % out)
 		quit()
 		return
+	if only == "booklove":
+		# The Love Philtre page: a stir and the wand in it
+		main.toggle_book()
+		main.hud.book_page = main.hud.book_page_of(7)
+		await _frames(10)
+		root.get_texture().get_image().save_png("%s/booklove.png" % out)
+		main.toggle_book()
+		main.show_book_pages()
+		await _frames(60)
+		root.get_texture().get_image().save_png("%s/booklove_float.png" % out)
+		quit()
+		return
 	if only == "bookfloat":
 		main.hud.book_page = main.hud.book_page_of(0)
 		main.show_book_pages()

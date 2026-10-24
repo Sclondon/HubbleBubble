@@ -743,6 +743,11 @@ func _process(dt: float) -> void:
 		var to_fire := Vector3(0, 0.15, 0) - bp
 		hut.props["bellows"].rotation = Vector3(0, atan2(to_fire.z, -to_fire.x), clampf(atan2(-to_fire.y, Vector2(to_fire.x, to_fire.z).length()), -0.6, 0.6))
 		hut.spots["bellows"].at = bp + Vector3(0, 0.12, 0)
+		# and the wand floating at the right, beside the pot
+		var wp := camera.project_position(Vector2(view.size) * Vector2(0.91, 0.64), 2.3)
+		hut.props["wand"].position = wp
+		hut.spots["wand"].at = wp + Vector3(0, 0.25, 0)
+		hut.spots["wand"].r = 0.24
 		hut.spots["bellows"].r = 0.28
 	if album != null and album.is_processing() and int(_boot_t * 2.0) != int((_boot_t - dt) * 2.0):
 		show_book_pages()
@@ -1509,10 +1514,12 @@ func _say_folk(text: String, voice: float, customer: Witch, urgent := false) -> 
 func _update_speech(dt: float) -> void:
 	if speech.is_empty():
 		return
-	var before := int(speech.shown)
-	speech.shown = minf(speech.text.length(), speech.shown + dt * 38.0)
-	var now := int(speech.shown)
-	var talking: bool = now < speech.text.length()
+	var n: int = speech.text.length()
+	var before := mini(int(speech.shown), n)
+	# (it runs on a few letters past the end, so the last ones finish popping up and settle)
+	speech.shown = minf(n + 6.0, speech.shown + dt * 38.0)
+	var now := mini(int(speech.shown), n)
+	var talking: bool = speech.shown < n
 	for k in range(before, now):
 		var ch: String = speech.text[k]
 		if k % 3 == 0 and ch != " " and ch != "\n":

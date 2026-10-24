@@ -10,6 +10,8 @@ class_name Lore
 ## it stronger.
 
 ## Element and virtue for each ingredient, in Book.INGREDIENTS order
+## How many whole turns widdershins it takes to turn a brew against the sun
+const TURNS_TO_WANE := 3
 const NATURE := [
 	{"element": "water", "virtue": "sight"},
 	{"element": "earth", "virtue": "dreams"},
@@ -103,7 +105,9 @@ static func resolve(steps: Array) -> Dictionary:
 			Book.ZAP:
 				quickened = true
 				col = col.lightened(0.18)
-	var out := {"effect": "nothing", "root": root, "twist": twist, "waning": turning < 0, "temper": temper,
+	# (a brew is only turned against the sun by three whole turns widdershins, more than it's turned with it)
+	var waning := turning <= -TURNS_TO_WANE
+	var out := {"effect": "nothing", "root": root, "twist": twist, "waning": waning, "temper": temper,
 			"potency": 0, "colour": col}
 	if root < 0:
 		return out
@@ -115,8 +119,8 @@ static func resolve(steps: Array) -> Dictionary:
 	if (nature.element == "air" or nature.virtue == "spirit") and not quickened:
 		return out
 	var virtue: String = nature.virtue
-	var effect: String = EFFECTS[virtue][1 if turning < 0 else 0]
-	if twist >= 0 and turning >= 0:
+	var effect: String = EFFECTS[virtue][1 if waning else 0]
+	if twist >= 0 and not waning:
 		var key: String = virtue + "+" + NATURE[twist].virtue
 		effect = TWISTS.get(key, effect)
 	out.effect = effect

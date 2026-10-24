@@ -25,7 +25,8 @@ func _initialize() -> void:
 	_check(Lore.resolve(Book.steps_of("eye")).effect == "nothing", "a cold brew does nothing")
 	_check(Lore.resolve(Book.steps_of("wing H2")).effect == "nothing", "an airy root unquickened flies off")
 	_check(Lore.resolve(Book.steps_of("scale")).effect == "growing", "a fiery root brings its own heat")
-	_check(Lore.resolve(Book.steps_of("scale H2 S-1")).effect == "shrinking", "widdershins turns it to its opposite")
+	_check(Lore.resolve(Book.steps_of("scale H2 S-1")).effect == "growing", "one turn widdershins is not enough to turn it")
+	_check(Lore.resolve(Book.steps_of("scale H2 S-3")).effect == "shrinking", "three turns widdershins turn it to its opposite")
 	_check(Lore.resolve(Book.steps_of("scale scale H3 Z")).potency == 5, "more root, hotter, quickened: strongest")
 	_check(Lore.resolve(Book.steps_of("petal eye H1 Z")).effect == "love at first sight", "a twist makes something else")
 	for e: String in Lore.EFFECTS:

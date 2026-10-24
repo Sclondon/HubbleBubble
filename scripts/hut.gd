@@ -671,9 +671,19 @@ func _shelf() -> void:
 		tap_spot.spot_attenuation = 0.8
 		tap_spot.shadow_enabled = false
 		tap_spot.light_cull_mask = 0xFFFFF & ~2 & ~4
-	var jar := Models.make("wand_jar")
-	jar.position = Vector3(-0.95, 1.51, -2.55)
+	# The wand floats in the air beside the pot, where you can see it (Shop keeps it up at the right of
+	# the view, as it does the book), a little light on it; its old jar isn't needed
+	var jar := Node3D.new()
+	jar.name = "wand_spot"
+	jar.position = Vector3(1.1, 1.4, 0.4)
 	add_child(jar)
+	var wand_light := OmniLight3D.new()
+	wand_light.position = Vector3(0.15, 0.45, 0.25)
+	wand_light.light_color = Color(1.0, 0.92, 0.75)
+	wand_light.light_energy = 1.2
+	wand_light.omni_range = 0.7
+	wand_light.light_cull_mask = 0xFFFFF & ~2 & ~4
+	jar.add_child(wand_light)
 	var wand := Models.make("wand")
 	wand.name = "wand"
 	wand.position = Vector3(0, 0.12, 0)
@@ -896,8 +906,10 @@ func _animate_wand(dt: float) -> void:
 		k = 1.0
 	elif _wand_t < 1.2:
 		k = 1.0 - (_wand_t - 0.9) / 0.3
+	# (bobbing gently in the air while it waits)
+	home += Vector3(0, sin(_wand_t * 1.6) * 0.03, 0)
 	_wand.global_position = home.lerp(over, smoothstep(0.0, 1.0, k))
-	_wand.rotation = Vector3(0, 0, 0.25 + k * sin(_wand_t * 22.0) * 0.6)
+	_wand.rotation = Vector3(0, 0, 0.35 + sin(_wand_t * 1.1) * 0.08 * (1.0 - k) + k * sin(_wand_t * 22.0) * 0.6)
 
 
 # --- the brew coming alive ---

@@ -824,6 +824,17 @@ func _thermo_icon(c: Vector2, s: float, level: int) -> void:
 	_ink(Book.HEAT_NAMES[level], c + Vector2(0, s * 0.42), int(clampf(s * 0.16, 14, 30)), HORIZONTAL_ALIGNMENT_CENTER, true, Book.HEAT_COLOURS[level].darkened(0.35))
 
 
+## Which way to turn the stick, and how many times: a curling arrow round the pot (sunwise is
+## clockwise, as the stick goes on screen), the count in it, the way's name under it
+func _stir_icon(c: Vector2, s: float, st: Dictionary) -> void:
+	var centre := c + Vector2(0, -s * 0.06)
+	Icons.stir(self, centre, s * 1.05, st.dir)
+	var turns: int = st.get("turns", 1)
+	var ink := Color(0.23, 0.14, 0.08)
+	_ink("x%d" % turns, centre + Vector2(0, s * 0.02), int(clampf(s * 0.2, 14, 34)), HORIZONTAL_ALIGNMENT_CENTER, true, ink)
+	_ink("SUNWISE" if st.dir > 0 else "WIDDERSHINS", c + Vector2(0, s * 0.42), int(clampf(s * 0.13, 12, 26)), HORIZONTAL_ALIGNMENT_CENTER, true, Color("2a6a9a") if st.dir > 0 else Color("9a2a6a"))
+
+
 func _step_picture(st: Dictionary, c: Vector2, s: float) -> void:
 	match st.kind:
 		Book.ADD:
@@ -831,7 +842,7 @@ func _step_picture(st: Dictionary, c: Vector2, s: float) -> void:
 		Book.HEAT:
 			_thermo_icon(c, s, st.level)
 		Book.STIR:
-			_picture("stick", c, s, st)
+			_stir_icon(c, s, st)
 		Book.ZAP:
 			_picture("wand", c, s, st)
 		_:

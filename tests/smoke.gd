@@ -104,7 +104,7 @@ func _run() -> void:
 	await _add("shroom")
 	main.heat = 55.0
 	await _seconds(1.3)
-	for i in 20:
+	for i in 60:
 		main.stir(-TAU / 20.0)
 	_check(main.brew[-1].kind == Book.STIR and main.brew[-1].dir == -1, "a whole turn widdershins is written down")
 	_check(Lore.resolve(main.brew).effect == "wakefulness", "and turns sleep to wakefulness")
