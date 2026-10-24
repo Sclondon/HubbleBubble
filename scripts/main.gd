@@ -277,9 +277,10 @@ var _scope_look := Vector3(0, 0, -18)
 
 
 func _scope_camera(ease_k: float) -> void:
-	var want := Vector3(0, 0.5, -18)
+	var want := Vector3(0, 3.0, -18)
 	if is_instance_valid(tower.tester):
-		want = tower.tester.global_position + Vector3(0, 1.3, 0)
+		# (aimed a little over her head, so the hills and the lair behind show too)
+		want = tower.tester.global_position + Vector3(0, 3.6, 0)
 	_scope_look = _scope_look.lerp(want, ease_k)
 	camera.position = SCOPE_AT
 	camera.look_at(_scope_look)

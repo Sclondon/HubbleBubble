@@ -108,8 +108,8 @@ func _ready() -> void:
 	_light.name = "fire_light"
 	_light.position = Vector3(0, 0.2, 1.35)
 	_light.light_color = Color(1.0, 0.55, 0.2)
-	_light.omni_range = 7.0
-	_light.omni_attenuation = 1.1
+	_light.omni_range = 9.0
+	_light.omni_attenuation = 0.8
 	_light.shadow_enabled = true
 	_light.shadow_bias = 0.05
 	_light.shadow_normal_bias = 1.5

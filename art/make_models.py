@@ -200,7 +200,7 @@ def paint(ob, fn):
     col = me.color_attributes["Col"]
     for v in me.vertices:
         c = fn(v.co, v.normal)
-        col.data[v.index].color = (c.x, c.y, c.z, 1.0)
+        col.data[v.index].color = (c.x, c.y, c.z, c[3] if len(c) > 3 else 1.0)
     me.color_attributes.active_color = col
     me.color_attributes.render_color_index = me.color_attributes.find("Col")
     return ob
@@ -1709,14 +1709,22 @@ def build_props():
     paint(needle[1], lambda co, n: lin("#3a2414"))
     out["thermometer_needle"] = needle
 
-    # The island the hut stands on, after Banjo-Kazooie's Isle o' Hags: rolling grassy hills, a dirt
-    # path winding from the hut's window out to a village of round cottages with big coloured roofs
-    # (Banjo's house, Jinjo Village), blobby trees, lanterns on posts, a spiral mountain behind, and
-    # cliffs dropping to the sea all round. The hut's own crooked roof is here too, a periscope poking
-    # out of it. Blender's +Y is out of the hut's window (the game's -Z).
+    # The island the hut stands on, after Banjo-Kazooie's Spiral Mountain and Gruntilda's Lair: a
+    # grassy meadow (a dirt path winding out from the hut's window, a yellow flower field, round
+    # cottages) ringed by flat-topped plateaus and tall rock pillars, their grass tops hanging over the
+    # brown cliffs in drips, waterfalls off them, big round-crowned trees, and behind it all the lair:
+    # a mossy mountain carved into a witch's face, glowing green eyes and a great open mouth a rope
+    # bridge runs into. Blender's +Y is out of the hut's window (the game's -Z).
+    # Every corner's alpha says what it's made of for shaders/isle.gdshader: 1 plain, 0.9 grass,
+    # 0.8 rock, 0.7 water, 0.6 flowers, 0.5 leaves, 0.3 glowing.
     from mathutils import noise as mnoise
     isle = []
     PATH = [Vector((0, 3.5)), Vector((0.5, 8)), Vector((-2, 13)), Vector((1, 18)), Vector((-1, 24)), Vector((2, 30))]
+    GRASS, ROCK, WATER, FLOWERS, LEAVES, GLOWING = 0.9, 0.8, 0.7, 0.6, 0.5, 0.3
+
+    def m(c, a):
+        c = lin(c)
+        return Vector((c.x, c.y, c.z, a))
 
     def path_d(x, y):
         best = 99.0
@@ -1729,14 +1737,12 @@ def build_props():
 
     def ground_h(x, y):
         r = math.hypot(x, y)
-        h = 1.4 * mnoise.noise(Vector((x * 0.06, y * 0.06, 0.3))) + 0.5 * mnoise.noise(Vector((x * 0.15, y * 0.15, 1.7)))
+        h = 0.35 * mnoise.noise(Vector((x * 0.08, y * 0.08, 0.3)))
         h *= max(0.0, min(1.0, (r - 5.0) / 8.0))
         h *= 0.3 + 0.7 * min(1.0, path_d(x, y) / 4.0)
-        if r > 42.0:
-            h -= (r - 42.0) * 1.6
         return h - 0.08
     bm = bmesh.new()
-    bmesh.ops.create_grid(bm, x_segments=72, y_segments=72, size=55.0)
+    bmesh.ops.create_grid(bm, x_segments=80, y_segments=80, size=110.0)
     for v in bm.verts:
         v.co.z = ground_h(v.co.x, v.co.y)
     me = bpy.data.meshes.new("isle_ground")
@@ -1745,77 +1751,236 @@ def build_props():
     ground = link(bpy.data.objects.new("isle_ground", me))
 
     def ground_col(co, n):
-        if co.z < -1.5:
-            return lin("#7a6a5a").lerp(lin("#4a3e36"), min(1.0, -co.z / 10.0))
         pd = path_d(co.x, co.y)
-        g = lin("#4aa83a").lerp(lin("#2e7a2e"), 0.5 + 0.5 * mnoise.noise(Vector((co.x * 0.3, co.y * 0.3, 5.0))))
-        g = g.lerp(lin("#8ac850"), max(0.0, co.z) * 0.2)
-        if pd < 1.3:
-            g = g.lerp(lin("#b08a5a"), min(1.0, (1.3 - pd) * 2.0))
-        return g
+        if pd < 1.2:
+            return m(lin("#b08a5a").lerp(lin("#8a6a40"), 0.5 + 0.5 * mnoise.noise(Vector((co.x, co.y, 2.0)))), 1.0)
+        # the yellow flower field
+        if ((co.x + 2.0) / 7.0) ** 2 + ((co.y - 37.0) / 3.5) ** 2 < 1.0:
+            return m("#d8c838", FLOWERS)
+        return m(lin("#3aa82a").lerp(lin("#2a8a22"), 0.5 + 0.5 * mnoise.noise(Vector((co.x * 0.2, co.y * 0.2, 5.0)))), GRASS)
     paint(ground, ground_col)
     isle.append(ground)
-    sea = lathe("isle_sea", [(-3.0, 160.0, 160.0), (-3.0, 160.0, 160.0)], seg=24, sub=0, cap_bottom=False)
-    paint(sea, lambda co, n: lin("#1a3a6a"))
-    isle.append(sea)
-    # The spiral mountain behind the village
-    mx, my = -24.0, 40.0
-    mount = lathe("isle_mountain", [(z * 1.0, (1.0 - z / 16.0) * 13.0 + 1.0, (1.0 - z / 16.0) * 13.0 + 1.0) for z in range(0, 17, 2)], seg=20, sub=0)
-    mount.data.transform(Matrix.Translation((mx, my, ground_h(mx, my) - 0.5)))
 
-    def mount_col(co, n):
-        z = co.z
-        a = math.atan2(co.y - my, co.x - mx)
-        stripe = math.sin(a * 1.0 + z * 0.8) > 0.75
-        c = lin("#6a8a4a").lerp(lin("#8a8070"), min(1.0, z / 12.0))
-        return lin("#b08a5a") if stripe else c
-    paint(mount, mount_col)
+    rnd_i = random.Random(71)
+
+    def plateau(cx, cy, r, h, seed, grass="#3cb02c", rock="#a8743a", base=-0.5, spikes=16):
+        """A flat-topped rock: brown cliffs all round, a grass lid on top hanging over in drips"""
+        rr = random.Random(seed)
+        n = spikes
+        outline = []
+        for j in range(n):
+            a = math.tau * j / n
+            k = 1.0 + 0.16 * mnoise.noise(Vector((math.cos(a) * 1.3 + seed, math.sin(a) * 1.3, seed * 0.7)))
+            outline.append((a, r * k))
+        # the cliffs, a little ragged going up
+        bm = bmesh.new()
+        rings = []
+        zs = [base, h * 0.35, h * 0.7, h]
+        for zi, z in enumerate(zs):
+            ring = []
+            for j, (a, rad) in enumerate(outline):
+                wob = 1.0 + (rr.uniform(-0.06, 0.06) if 0 < zi < len(zs) - 1 else 0.0)
+                ring.append(bm.verts.new((cx + math.cos(a) * rad * wob, cy + math.sin(a) * rad * wob, z)))
+            rings.append(ring)
+        for i in range(len(rings) - 1):
+            for j in range(n):
+                bm.faces.new((rings[i][j], rings[i][(j + 1) % n], rings[i + 1][(j + 1) % n], rings[i + 1][j]))
+        me = bpy.data.meshes.new("cliff")
+        bm.to_mesh(me)
+        bm.free()
+        cliff = link(bpy.data.objects.new("cliff", me))
+        paint(cliff, lambda co, nn: m(lin(rock).lerp(lin(rock) * 0.6, 0.5 + 0.5 * mnoise.noise(Vector((co.x * 0.3, co.y * 0.3, co.z * 0.2)))), ROCK))
+        # the grass lid, a touch domed and wider than the cliffs
+        bm = bmesh.new()
+        mid = bm.verts.new((cx, cy, h + 0.25))
+        lip = [bm.verts.new((cx + math.cos(a) * rad * 1.04, cy + math.sin(a) * rad * 1.04, h + 0.03)) for a, rad in outline]
+        for j in range(n):
+            bm.faces.new((mid, lip[j], lip[(j + 1) % n]))
+        me = bpy.data.meshes.new("lid")
+        bm.to_mesh(me)
+        bm.free()
+        lid = link(bpy.data.objects.new("lid", me))
+        paint(lid, lambda co, nn: m(grass, GRASS))
+        # the drips: the lid's edge hanging down the cliff in points, long and short
+        bm = bmesh.new()
+        top, bot = [], []
+        steps = n * 3
+        for j in range(steps):
+            t = j / steps
+            jj = int(t * n)
+            f = t * n - jj
+            a0, r0 = outline[jj]
+            a1, r1 = outline[(jj + 1) % n]
+            a = a0 + (((a1 - a0 + math.pi) % math.tau) - math.pi) * f
+            rad = (r0 + (r1 - r0) * f) * 1.045
+            drip = rr.uniform(0.7, 1.6) if j % 3 == 1 else rr.uniform(0.15, 0.4)
+            drip *= min(1.0, h / 4.0) + 0.3
+            top.append(bm.verts.new((cx + math.cos(a) * rad, cy + math.sin(a) * rad, h + 0.05)))
+            bot.append(bm.verts.new((cx + math.cos(a) * rad * 0.995, cy + math.sin(a) * rad * 0.995, h - drip)))
+        for j in range(steps):
+            bm.faces.new((top[j], top[(j + 1) % steps], bot[(j + 1) % steps], bot[j]))
+        me = bpy.data.meshes.new("drips")
+        bm.to_mesh(me)
+        bm.free()
+        drips = link(bpy.data.objects.new("drips", me))
+        paint(drips, lambda co, nn: m(lin(grass).lerp(lin(grass) * 0.55, max(0.0, min(1.0, (h - co.z) / 1.2))), GRASS))
+        return [cliff, lid, drips]
+
+    def waterfall(cx, cy, r, h, toward):
+        """Water pouring off a plateau's edge facing `toward`, into a pool"""
+        d = (Vector(toward) - Vector((cx, cy))).normalized()
+        side = Vector((-d.y, d.x))
+        at = Vector((cx, cy)) + d * r * 0.92
+        w = 1.4
+        bm = bmesh.new()
+        vs = []
+        for zi in range(5):
+            z = h + 0.1 - (h + 0.4) * zi / 4.0
+            push = 0.5 + 0.9 * (zi / 4.0) ** 0.5
+            p = at + d * push
+            vs.append((bm.verts.new((p.x - side.x * w, p.y - side.y * w, z)), bm.verts.new((p.x + side.x * w, p.y + side.y * w, z))))
+        for zi in range(4):
+            bm.faces.new((vs[zi][0], vs[zi][1], vs[zi + 1][1], vs[zi + 1][0]))
+        me = bpy.data.meshes.new("waterfall")
+        bm.to_mesh(me)
+        bm.free()
+        fall = link(bpy.data.objects.new("waterfall", me))
+        paint(fall, lambda co, nn: m("#9ad0ff", WATER))
+        pc = at + d * 2.6
+        pool = egg("pool", (pc.x, pc.y, 0.0), (3.0, 2.6, 0.12), seg=14, rings=4, sub=0)
+        paint(pool, lambda co, nn: m("#3a7ae8", WATER))
+        return [fall, pool]
+
+    def tree(x, y, s=1.0):
+        """A Spiral Mountain tree: a tall bare trunk and one big lumpy round crown"""
+        z = ground_h(x, y)
+        trunk = tube("tree_trunk", (x, y, z - 0.3), (x, y, z + 3.6 * s), 0.42 * s, 0.3 * s, seg=7)
+        paint(trunk, lambda co, n: m("#6a3e1e", ROCK))
+        sd = rnd_i.uniform(0, 50)
+        crown = egg("tree_crown", (x, y, z + 4.6 * s), (2.1 * s, 2.1 * s, 1.9 * s), seg=12, rings=8, sub=0,
+                    shape=lambda v: v * (1.0 + 0.16 * mnoise.noise(Vector((v.x * 0.9 + sd, v.y * 0.9, v.z * 0.9)))))
+        paint(crown, lambda co, n: m(lin("#3ac02a").lerp(lin("#1a6a1a"), 0.6 * max(0.0, -n.z)), LEAVES))
+        return [trunk, crown]
+
+    # The plateaus round the meadow (centre x, y, radius, height), some with a second tier
+    for i, (cx, cy, r, h) in enumerate([(-25, 12, 7, 5), (-28, 24, 9, 7), (-22, 38, 6, 4.5), (-28, 24, 5, 11),
+                                        (24, 8, 6, 4), (25, 20, 8, 6.5), (26, 36, 7, 5), (25, 20, 4.5, 10),
+                                        (-18, 54, 8, 4.5), (22, 56, 9, 5), (9, 38, 3, 2.2), (-30, -4, 8, 6), (28, -6, 8, 5.5)]):
+        isle += plateau(cx, cy, r, h, i + 1)
+    # Tall rock pillars
+    for i, (cx, cy, r, h) in enumerate([(15, 40, 2.5, 11), (-7, 41, 2.8, 9), (14, 49, 2.0, 13)]):
+        isle += plateau(cx, cy, r, h, 40 + i, spikes=11)
+    # A ring of high cliffs closing the world in
+    for k in range(16):
+        a = math.tau * k / 16 + 0.1
+        if abs(((a - math.pi / 2 + math.pi) % math.tau) - math.pi) < 0.75:
+            continue  # (not in front of the lair)
+        isle += plateau(math.cos(a) * 72, math.sin(a) * 72, 15, rnd_i.uniform(9, 16), 60 + k, grass="#2a9a24", rock="#946430")
+    isle += waterfall(-28, 24, 9, 7, (0, 18))
+    isle += waterfall(25, 20, 8, 6.5, (0, 18))
+    isle += waterfall(-18, 54, 8, 4.5, (0, 20))
+    for x, y, s in [(-6, 8, 1.0), (6, 7, 0.9), (-18, 17, 1.1), (17, 17, 1.0), (-9, 33, 1.0), (10, 31, 1.1), (-6, 19, 0.85),
+                    (7, 21, 0.95), (12, 45, 1.2), (-13, 36, 1.0), (19, 46, 1.1), (-2, 50, 1.3), (-14, 3, 1.0), (14, 2, 0.9)]:
+        isle += tree(x, y, s)
+
+    # The lair: a great mossy mountain with a witch's face carved in the side facing the hut
+    LX, LY = 4.0, 80.0
+
+    def lair_r(z):
+        return max(2.0, 26.0 - z * 0.42)
+    mount = lathe("lair", [(z, lair_r(z), lair_r(z)) for z in [-1, 4, 9, 14, 19, 24, 30, 36, 42, 50, 56]], seg=26, sub=0,
+                  wobble=lambda a, z: 2.2 * mnoise.noise(Vector((math.cos(a) * 2.0, math.sin(a) * 2.0, z * 0.12))))
+    for vtx in mount.data.vertices:
+        k = max(0.0, vtx.co.z - 30.0) / 26.0
+        vtx.co.x += 9.0 * k * k
+    mount.data.transform(Matrix.Translation((LX, LY, 0)))
+    paint(mount, lambda co, n: m(lin("#4a8a38").lerp(lin("#2e6028"), 0.5 + 0.5 * mnoise.noise(Vector((co.x * 0.1, co.y * 0.1, co.z * 0.1)))), ROCK))
     isle.append(mount)
+
+    def front(z, dx=0.0):
+        """A point on the lair's face, `dx` across it, at height z"""
+        return Vector((LX + dx, LY - math.sqrt(max(1.0, lair_r(z) ** 2 - dx * dx)) + 1.2, z))
+    face = []
+    for sx in (-1, 1):
+        e = front(17, sx * 6.0)
+        sock = egg("eye_socket", e, (3.4, 1.2, 2.4), seg=12, rings=6, sub=0)
+        paint(sock, lambda co, n: m("#0e1a0e", 1.0))
+        ball = egg("eye", e + Vector((0, -0.7, 0)), (2.4, 0.8, 1.8), seg=12, rings=6, sub=0)
+        paint(ball, lambda co, n: m("#5aff6a", GLOWING))
+        pupil = egg("pupil", e + Vector((sx * -0.3, -1.4, -0.2)), (0.9, 0.5, 1.2), seg=8, rings=5, sub=0)
+        paint(pupil, lambda co, n: m("#0a2a0a", 1.0))
+        b0 = front(20.5, sx * 2.5)
+        b1 = front(21.5, sx * 9.5)
+        brow = tube("brow", b0 + Vector((0, -1.0, -0.6)), b1 + Vector((0, -0.6, 0.6)), 1.0, 0.7, seg=7)
+        paint(brow, lambda co, n: m("#b88a3a", ROCK))
+        face += [sock, ball, pupil, brow]
+    n0 = front(16.5)
+    nose = tube("nose", n0 + Vector((0, 1.0, 0)), n0 + Vector((0, -8.0, -5.0)), 2.6, 0.5, seg=9)
+    paint(nose, lambda co, n: m("#5aa040", ROCK))
+    wart = egg("wart", n0 + Vector((1.4, -4.5, -2.2)), (0.9, 0.9, 0.9), seg=8, rings=5, sub=0)
+    paint(wart, lambda co, n: m("#5a8a3a", ROCK))
+    mo = front(8.0)
+    mouth = egg("mouth", mo + Vector((0, -0.4, 0)), (6.5, 1.4, 3.2), seg=16, rings=8, sub=0)
+    paint(mouth, lambda co, n: m("#c82a1a", GLOWING))
+    lips = lathe("lips", [(-0.6, 7.2, 3.8), (0.6, 7.2, 3.8)], seg=18, sub=0, cap_top=False, cap_bottom=False)
+    lips.data.transform(Matrix.Translation(mo + Vector((0, -0.6, 0))) @ Matrix.Rotation(math.pi / 2, 4, "X"))
+    paint(lips, lambda co, n: m("#2a4a1e", ROCK))
+    face += [nose, wart, mouth, lips]
+    for k in range(5):
+        tx = -4.0 + k * 2.0
+        tooth = box("tooth", (mo.x + tx, mo.y - 1.6, mo.z + 2.0 - abs(tx) * 0.12), (0.9, 0.5, 1.4))
+        paint(tooth, lambda co, n: m("#f0ead0", 1.0))
+        face.append(tooth)
+    isle += face
+    # The rope bridge from the tallest pillar into the mouth
+    b0 = Vector((14.0, 49.0, 13.0))
+    b1 = mo + Vector((0, -1.0, -2.2))
+    for k in range(18):
+        t = (k + 0.5) / 18
+        p = b0.lerp(b1, t) + Vector((0, 0, -1.2 * math.sin(t * math.pi)))
+        plank = box("plank", p, (1.8, 0.45, 0.12), rot=Matrix.Rotation(math.atan2(b1.x - b0.x, b1.y - b0.y), 3, "Z"))
+        paint(plank, lambda co, n: m("#8a5a2a", 1.0))
+        isle.append(plank)
+    for sx in (-0.95, 0.95):
+        prev = None
+        for k in range(9):
+            t = k / 8
+            p = b0.lerp(b1, t) + Vector((sx, 0, 0.9 - 1.2 * math.sin(t * math.pi)))
+            if prev is not None:
+                rope = tube("rope", prev, p, 0.06, 0.06, seg=6)
+                paint(rope, lambda co, n: m("#c8a060", 1.0))
+                isle.append(rope)
+            prev = p
 
     def cottage(x, y, wall, roof, turn):
         z = ground_h(x, y)
         walls = lathe("cottage_wall", [(0.0, 2.2, 2.2), (2.6, 2.1, 2.1)], seg=12, sub=0, cap_top=False)
         walls.data.transform(Matrix.Translation((x, y, z - 0.2)))
-        paint(walls, lambda co, n: lin(wall) * (0.75 + 0.25 * max(0.0, n.x * 0.5 + 0.5)))
+        paint(walls, lambda co, n: m(lin(wall) * (0.75 + 0.25 * max(0.0, n.x * 0.5 + 0.5)), 1.0))
         lean = Vector((math.cos(turn) * 0.4, math.sin(turn) * 0.4, 0))
         cone = lathe("cottage_roof", [(2.3, 3.0, 3.0), (2.9, 2.4, 2.4), (4.2, 1.2, 1.2), (5.4, 0.15, 0.15)], seg=12, sub=0)
         for vtx in cone.data.vertices:
             k = max(0.0, (vtx.co.z - 2.3) / 3.1)
             vtx.co += lean * k * k
         cone.data.transform(Matrix.Translation((x, y, z - 0.2)))
-        paint(cone, lambda co, n: lin(roof).lerp(lin(roof) * 0.55, 0.5 * (math.sin(co.z * 9.0) > 0.4)))
+        paint(cone, lambda co, n: m(lin(roof).lerp(lin(roof) * 0.55, 0.5 * (math.sin(co.z * 9.0) > 0.4)), 1.0))
         door = box("cottage_door", (x + math.cos(turn) * 2.15, y + math.sin(turn) * 2.15, z + 0.7), (0.9, 0.2, 1.5), rot=Matrix.Rotation(turn + math.pi / 2, 3, "Z"))
-        paint(door, lambda co, n: lin("#5a3418"))
-        win = box("glow_window", (x + math.cos(turn + 0.9) * 2.15, y + math.sin(turn + 0.9) * 2.15, z + 1.6), (0.6, 0.2, 0.6), rot=Matrix.Rotation(turn + 0.9 + math.pi / 2, 3, "Z"))
-        paint(win, lambda co, n: lin("#ffd070"))
+        paint(door, lambda co, n: m("#5a3418", 1.0))
+        win = box("cottage_window", (x + math.cos(turn + 0.9) * 2.15, y + math.sin(turn + 0.9) * 2.15, z + 1.6), (0.6, 0.2, 0.6), rot=Matrix.Rotation(turn + 0.9 + math.pi / 2, 3, "Z"))
+        paint(win, lambda co, n: m("#ffd070", GLOWING))
         chim = tube("cottage_chimney", (x - 1.0, y, z + 3.4), (x - 1.0, y, z + 5.2), 0.3, 0.3, seg=6)
-        paint(chim, lambda co, n: lin("#8a6a5a"))
+        paint(chim, lambda co, n: m("#8a6a5a", 1.0))
         return [walls, cone, door, win, chim]
-    for x, y, wall, roof, turn in [(-9, 15, "#f0e8d0", "#4a6ad8", -1.2), (9, 17, "#e8d0b0", "#d84a4a", -2.0), (-15, 25, "#f0e0c8", "#e8b030", -0.8),
-                                   (14, 28, "#d8c8e8", "#8a4ac8", -2.3), (4, 34, "#e8e0c0", "#3ab878", -1.6), (-5, 30, "#f0d8c8", "#e86ab8", -1.4)]:
+    for x, y, wall, roof, turn in [(-13, 8, "#f0e8d0", "#4a6ad8", -0.5), (13, 9, "#e8d0b0", "#d84a4a", -2.6),
+                                   (-15, 28, "#f0e0c8", "#e8b030", -0.6), (17, 29, "#d8c8e8", "#8a4ac8", -2.4)]:
         isle += cottage(x, y, wall, roof, turn)
-    rnd_i = random.Random(71)
-    for k in range(26):
-        a = rnd_i.uniform(0, math.tau)
-        r = rnd_i.uniform(8, 40)
-        x, y = math.cos(a) * r, math.sin(a) * r
-        if path_d(x, y) < 3.0:
-            continue
-        z = ground_h(x, y)
-        trunk = tube("tree_trunk", (x, y, z - 0.2), (x, y, z + 2.0), 0.3, 0.22, seg=6)
-        paint(trunk, lambda co, n: lin("#6a4426"))
-        isle.append(trunk)
-        for j in range(3):
-            blob = egg("tree_top", (x + rnd_i.uniform(-0.6, 0.6), y + rnd_i.uniform(-0.6, 0.6), z + 2.4 + j * 0.9), (1.4 - j * 0.3, 1.4 - j * 0.3, 1.1 - j * 0.2), seg=8, rings=5, sub=0)
-            paint(blob, lambda co, n: lin("#3a9a3a").lerp(lin("#1e5a2a"), 0.5 * max(0.0, -n.z)))
-            isle.append(blob)
     for i in range(len(PATH) - 1):
         p = PATH[i].lerp(PATH[i + 1], 0.5) + Vector((1.8, 0))
         z = ground_h(p.x, p.y)
         post = tube("lamp_post", (p.x, p.y, z - 0.2), (p.x, p.y, z + 2.2), 0.08, 0.07, seg=6)
-        paint(post, lambda co, n: lin("#3a2a20"))
-        lamp = box("glow_lamp", (p.x, p.y, z + 2.35), (0.3, 0.3, 0.4))
-        paint(lamp, lambda co, n: lin("#ffc860"))
+        paint(post, lambda co, n: m("#3a2a20", 1.0))
+        lamp = box("lamp", (p.x, p.y, z + 2.35), (0.3, 0.3, 0.4))
+        paint(lamp, lambda co, n: m("#ffc860", GLOWING))
         isle += [post, lamp]
     # The hut's own roof: a crooked cone of dark shingles over the round wall, the periscope out of it
     roof_ = lathe("hut_roof", [(5.9, 4.2, 4.2), (6.6, 3.6, 3.6), (8.4, 2.0, 2.0), (10.6, 0.25, 0.25)], seg=14, sub=0)
@@ -1823,13 +1988,13 @@ def build_props():
         k = max(0.0, (vtx.co.z - 5.9) / 4.7)
         vtx.co += Vector((0.9, -0.5, 0)) * k * k
     roof_.data.transform(Matrix.Translation((0, -0.25, 0)))
-    paint(roof_, lambda co, n: lin("#4a3a6a").lerp(lin("#2a2040"), 0.5 * (math.sin(co.z * 8.0) > 0.3)))
+    paint(roof_, lambda co, n: m(lin("#4a3a6a").lerp(lin("#2a2040"), 0.5 * (math.sin(co.z * 8.0) > 0.3)), 1.0))
     pipe = tube("periscope", (-1.2, 0.6, 7.0), (-1.2, 0.6, 11.0), 0.18, 0.18, seg=8)
-    paint(pipe, lambda co, n: lin("#c8902a"))
+    paint(pipe, lambda co, n: m("#c8902a", 1.0))
     head_ = box("periscope_head", (-1.2, 0.85, 11.1), (0.4, 0.7, 0.4))
-    paint(head_, lambda co, n: lin("#c8902a"))
-    lens = box("glow_lens", (-1.2, 1.21, 11.1), (0.25, 0.05, 0.25))
-    paint(lens, lambda co, n: lin("#a8e0ff"))
+    paint(head_, lambda co, n: m("#c8902a", 1.0))
+    lens = box("lens", (-1.2, 1.21, 11.1), (0.25, 0.05, 0.25))
+    paint(lens, lambda co, n: m("#a8e0ff", GLOWING))
     isle += [roof_, pipe, head_, lens]
     out["island"] = isle
 

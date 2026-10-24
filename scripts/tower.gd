@@ -23,7 +23,10 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.seed = 9
-	var isle := Models.make("island")
+	var look := ShaderMaterial.new()
+	look.shader = preload("res://shaders/isle.gdshader")
+	look.set_shader_parameter("leaf_tex", preload("res://textures/canopy_leafy.png"))
+	var isle := Models.make("island", look)
 	isle.name = "island"
 	add_child(isle)
 	Tower.on_layer(isle, LAYER)

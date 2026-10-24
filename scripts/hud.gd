@@ -724,12 +724,34 @@ func _picture(name: String, c: Vector2, s: float, fallback := {}) -> void:
 		Icons.step(self, fallback, c, s * 0.7)
 
 
+## The pot's dial thermometer drawn in ink: its coloured bands round the face, the needle on the heat
+## a recipe wants, and that band's name under it
+func _thermo_icon(c: Vector2, s: float, level: int) -> void:
+	var r := s * 0.36
+	var ink := Color(0.23, 0.14, 0.08)
+	var centre := c + Vector2(0, -s * 0.06)
+	draw_circle(centre, r * 1.08, ink)
+	draw_circle(centre, r, Color(0.96, 0.9, 0.74))
+	# the dial runs from the lower left round over the top to the lower right
+	var a0 := PI * 0.75
+	var a1 := PI * 2.25
+	for b in 4:
+		var f0: float = Book.HEAT_BANDS[b] / 100.0
+		var f1: float = Book.HEAT_BANDS[b + 1] / 100.0
+		draw_arc(centre, r * 0.78, lerpf(a0, a1, f0), lerpf(a0, a1, f1), 12, Book.HEAT_COLOURS[b].darkened(0.1), r * 0.26)
+	var want: float = (Book.HEAT_BANDS[level] + Book.HEAT_BANDS[level + 1]) * 0.5 / 100.0
+	var na := lerpf(a0, a1, want)
+	draw_line(centre, centre + Vector2(cos(na), sin(na)) * r * 0.85, Color(0.75, 0.08, 0.06), maxf(3.0, r * 0.1))
+	draw_circle(centre, r * 0.1, ink)
+	_ink(Book.HEAT_NAMES[level], c + Vector2(0, s * 0.42), int(clampf(s * 0.16, 14, 30)), HORIZONTAL_ALIGNMENT_CENTER, true, Book.HEAT_COLOURS[level].darkened(0.35))
+
+
 func _step_picture(st: Dictionary, c: Vector2, s: float) -> void:
 	match st.kind:
 		Book.ADD:
 			_picture(Hut.INGREDIENT_MODELS[st.what], c, s, st)
 		Book.HEAT:
-			_picture("bellows", c, s, st)
+			_thermo_icon(c, s, st.level)
 		Book.STIR:
 			_picture("stick", c, s, st)
 		Book.ZAP:

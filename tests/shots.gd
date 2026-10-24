@@ -72,6 +72,17 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("%s/dev.png" % out)
 		quit()
 		return
+	if only.begins_with("isle"):
+		# The island from the periscope's head, looking out over the meadow to the lair
+		await _frames(30)
+		main.set_process(false)
+		main.camera.position = Vector3(-0.6, 5.2, -3.9)
+		main.camera.fov = 50.0
+		main.camera.look_at(Vector3(0, 5.0, -40.0) if only == "isle" else Vector3(0, 1.0, -15.0))
+		await _frames(10)
+		root.get_texture().get_image().save_png("%s/%s.png" % [out, only])
+		quit()
+		return
 	if only == "spoon":
 		# The stirring spoon close up, the brew hidden so the bowl shows
 		main.start_free()

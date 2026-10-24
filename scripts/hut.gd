@@ -137,7 +137,7 @@ func _process(dt: float) -> void:
 	_flare = maxf(0.0, _flare - dt * 1.5)
 	# (eased toward the heat, so the bellows build it up rather than make it jump)
 	fire.intensity = lerpf(fire.intensity, 0.6 + h * 0.9 + _flare * 0.3, minf(1.0, dt * 2.0))
-	fire.light_energy = lerpf(fire.light_energy, 2.0 + h * 2.5 + _flare * 1.0, minf(1.0, dt * 2.0))
+	fire.light_energy = lerpf(fire.light_energy, 5.0 + h * 6.0 + _flare * 2.0, minf(1.0, dt * 2.0))
 	brew.heat = h
 	# The pages take the potion's light (lit by it, as everything is, but always readable)
 	var page_lit := Color.WHITE.lerp(brew.look.light_colour, 0.35) * (0.45 + 0.45 * brew.light_now())
@@ -658,6 +658,19 @@ func _shelf() -> void:
 		_item_spots.append(spot)
 		spots["jar%d" % i] = {"at": at + Vector3(0, 0.18, 0), "r": 0.26}
 	add_child(hung.piece("side_shelves"))
+	# A spotlight on each tap, so you can find them in the dark
+	for target: Vector3 in [TAP_HANDLE + Vector3(0, 0.05, 0), WATER_VALVE + Vector3(0, 0.1, 0)]:
+		var tap_spot := SpotLight3D.new()
+		add_child(tap_spot)
+		tap_spot.position = target + Vector3(0, 1.1, 0.6)
+		tap_spot.basis = Basis.looking_at(target - tap_spot.position)
+		tap_spot.light_color = Color(1.0, 0.9, 0.7)
+		tap_spot.light_energy = 3.0
+		tap_spot.spot_angle = 16.0
+		tap_spot.spot_range = 2.2
+		tap_spot.spot_attenuation = 0.8
+		tap_spot.shadow_enabled = false
+		tap_spot.light_cull_mask = 0xFFFFF & ~2 & ~4
 	var jar := Models.make("wand_jar")
 	jar.position = Vector3(-0.95, 1.51, -2.55)
 	add_child(jar)
